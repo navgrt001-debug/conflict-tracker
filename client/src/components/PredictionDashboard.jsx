@@ -118,7 +118,7 @@ export default function PredictionDashboard() {
         {/* Accuracy scorecard */}
         {accuracy && (
           <div className="p-4 border-b border-border">
-            <div className="grid grid-cols-4 gap-2 mb-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
               <StatCard
                 value={accuracy.total}
                 label="Total Predictions"
@@ -143,7 +143,7 @@ export default function PredictionDashboard() {
             </div>
 
             {/* Charts side by side */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Accuracy Over Time</div>
                 <AccuracyTimeline timeline={accuracy.timeline || []} />
@@ -175,7 +175,7 @@ export default function PredictionDashboard() {
         {/* Manual generate */}
         <div className="p-4 border-b border-border">
           <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Generate New Prediction</div>
-          <div className="flex gap-2 items-end">
+          <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
             <div className="flex-1">
               <label className="text-[10px] text-gray-600 block mb-1">Conflict Event</label>
               <select

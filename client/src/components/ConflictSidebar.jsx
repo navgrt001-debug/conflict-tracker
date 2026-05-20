@@ -14,7 +14,7 @@ const STATUS_BADGE = {
   Tense: 'bg-amber-900 text-amber-300 border-amber-700',
 };
 
-export default function ConflictSidebar({ conflicts, selected, onSelect }) {
+export default function ConflictSidebar({ conflicts, selected, onSelect, mobile = false }) {
   const [search, setSearch] = useState('');
   const [regionFilter, setRegionFilter] = useState('All');
 
@@ -29,7 +29,7 @@ export default function ConflictSidebar({ conflicts, selected, onSelect }) {
     .sort((a, b) => b.intensity - a.intensity);
 
   return (
-    <div className="w-72 bg-card border-r border-border flex flex-col shrink-0">
+    <div className={`${mobile ? 'w-full' : 'w-72'} bg-card border-r border-border flex flex-col shrink-0`}>
       <div className="p-3 border-b border-border space-y-2">
         <input
           type="text"

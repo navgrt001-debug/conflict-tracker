@@ -31,7 +31,7 @@ export default function ConflictDetail({ conflict }) {
 
       {/* Risk scores */}
       {scores && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <ScoreCard label="Conflict Severity" value={scores.severity} />
           <ScoreCard label="Economic Impact" value={scores.economic} />
           <ScoreCard label="Escalation Risk" value={scores.escalation} />
