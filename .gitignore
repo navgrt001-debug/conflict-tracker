@@ -1,3 +1,9 @@
 node_modules/
 .env
 dist/
+
+# Runtime lowdb data files (recreated on startup, contain user data)
+server/data/portfolios.json
+server/data/supplyChain.json
+server/data/pricingProfiles.json
+server/data/predictions.json
