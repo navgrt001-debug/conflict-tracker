@@ -37,7 +37,13 @@ app.use('/api/portfolio', portfolioRouter);
 app.use('/api/supply-chain', supplyChainRouter);
 app.use('/api/pricing', pricingRouter);
 
-app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+app.get('/api/health', (req, res) => {
+  const key = process.env.DEEPSEEK_API_KEY;
+  res.json({
+    status: 'ok',
+    deepseek_key: key ? `${key.slice(0, 6)}...${key.slice(-4)} (len=${key.length})` : 'NOT SET',
+  });
+});
 
 // Serve React build in production (client/dist must exist)
 const distPath = path.join(__dirname, '../client/dist');
