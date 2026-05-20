@@ -1,6 +1,8 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
+const fs = require('fs');
 
 const conflictsRouter = require('./routes/conflicts');
 const marketsRouter = require('./routes/markets');
@@ -36,6 +38,13 @@ app.use('/api/supply-chain', supplyChainRouter);
 app.use('/api/pricing', pricingRouter);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+
+// Serve React build in production (client/dist must exist)
+const distPath = path.join(__dirname, '../client/dist');
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  app.get('*', (req, res) => res.sendFile(path.join(distPath, 'index.html')));
+}
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
