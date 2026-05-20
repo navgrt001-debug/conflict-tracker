@@ -1,5 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+
+const API_BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api';
 
 const SEV_COLOR = (s) =>
   s >= 8 ? 'bg-red-600 text-white' :
@@ -13,44 +15,71 @@ const SEV_RING = (s) =>
   s >= 4 ? 'border-yellow-700' :
            'border-gray-700';
 
-function timeAgo(seendate) {
-  if (!seendate) return '';
-  // GDELT format: "20240315T123000Z"
-  const str = String(seendate);
-  const iso = `${str.slice(0,4)}-${str.slice(4,6)}-${str.slice(6,8)}T${str.slice(9,11)}:${str.slice(11,13)}:${str.slice(13,15)}Z`;
+function timeAgo(iso) {
+  if (!iso) return '';
   const diff = (Date.now() - new Date(iso).getTime()) / 60000;
-  if (isNaN(diff)) return '';
+  if (isNaN(diff) || diff < 0) return 'just now';
+  if (diff < 1) return 'just now';
   if (diff < 60) return `${Math.round(diff)}m ago`;
   if (diff < 1440) return `${Math.round(diff / 60)}h ago`;
   return `${Math.round(diff / 1440)}d ago`;
 }
 
 export default function LiveFeed({ onSelectEvent, selectedEventId }) {
-  const { data: events = [], isLoading, error, dataUpdatedAt } = useQuery({
+  const qc = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const { data, isLoading, error, isFetching } = useQuery({
     queryKey: ['feed-conflicts'],
-    queryFn: () => fetch('/api/feed/conflicts').then(r => r.json()),
+    queryFn: () => fetch(`${API_BASE}/feed/conflicts`).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    }),
     refetchInterval: 60_000,
-    staleTime: 30_000,
+    staleTime: 0,           // always re-fetch when interval fires
+    refetchOnWindowFocus: true,
+    select: (d) => ({
+      events: Array.isArray(d) ? d : (d.events || []),  // handle both old [] and new {events,updatedAt}
+      updatedAt: d?.updatedAt || null,
+    }),
   });
 
-  const lastUpdated = dataUpdatedAt
-    ? Math.round((Date.now() - dataUpdatedAt) / 60000)
-    : null;
+  const events = data?.events || [];
+  const updatedAt = data?.updatedAt || null;
+
+  const handleManualRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await fetch(`${API_BASE}/feed/refresh`, { method: 'POST' });
+      await qc.invalidateQueries({ queryKey: ['feed-conflicts'] });
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-3 py-2.5 border-b border-border shrink-0 flex items-center justify-between">
-        <div>
-          <h3 className="text-xs font-bold text-white uppercase tracking-wider">Live Conflict Feed</h3>
-          <p className="text-[10px] text-gray-600 mt-0.5">GDELT · auto-refresh 60s</p>
-        </div>
-        <div className="text-right">
-          {lastUpdated !== null && (
-            <span className="text-[10px] text-gray-600">
-              {lastUpdated === 0 ? 'just now' : `${lastUpdated}m ago`}
-            </span>
-          )}
-          {isLoading && <span className="text-[10px] text-blue-500 ml-1">↻</span>}
+      <div className="px-3 py-2.5 border-b border-border shrink-0">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-xs font-bold text-white uppercase tracking-wider">Live Conflict Feed</h3>
+            <p className="text-[10px] text-gray-600 mt-0.5">
+              {updatedAt ? `Updated ${timeAgo(updatedAt)}` : 'Auto-refresh every 5 min'}
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {(isFetching || refreshing) && (
+              <span className="text-[10px] text-blue-400 animate-spin">↻</span>
+            )}
+            <button
+              onClick={handleManualRefresh}
+              disabled={refreshing || isFetching}
+              title="Force refresh feed"
+              className="text-[10px] text-gray-500 hover:text-gray-300 px-1.5 py-0.5 rounded border border-border hover:border-gray-500 transition-colors disabled:opacity-40"
+            >
+              ↻
+            </button>
+          </div>
         </div>
       </div>
 
@@ -63,9 +92,15 @@ export default function LiveFeed({ onSelectEvent, selectedEventId }) {
           </div>
         )}
 
-        {error && (
-          <div className="p-3 text-xs text-red-400">
-            Failed to load feed. Retrying...
+        {error && !isLoading && (
+          <div className="p-3 space-y-2">
+            <div className="text-xs text-red-400">Feed unavailable — check server connection</div>
+            <button
+              onClick={handleManualRefresh}
+              className="text-xs text-blue-400 hover:text-blue-300 underline"
+            >
+              Retry now
+            </button>
           </div>
         )}
 
@@ -83,7 +118,7 @@ export default function LiveFeed({ onSelectEvent, selectedEventId }) {
               </span>
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-gray-200 leading-snug line-clamp-2">{event.title}</p>
-                <div className="flex items-center gap-2 mt-1">
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <span className="text-[10px] text-gray-600">{event.domain}</span>
                   <span className="text-[10px] text-gray-700">·</span>
                   <span className="text-[10px] text-gray-600">{event.sourcecountry}</span>
@@ -93,15 +128,18 @@ export default function LiveFeed({ onSelectEvent, selectedEventId }) {
               </div>
             </div>
             {selectedEventId === event.id && (
-              <div className="mt-1.5 text-[10px] text-blue-400 font-medium">
-                → View causal chain
-              </div>
+              <div className="mt-1.5 text-[10px] text-blue-400 font-medium">→ View causal chain</div>
             )}
           </button>
         ))}
 
-        {!isLoading && events.length === 0 && (
-          <div className="p-4 text-xs text-gray-600 text-center">No events loaded yet</div>
+        {!isLoading && !error && events.length === 0 && (
+          <div className="p-4 text-center space-y-2">
+            <div className="text-xs text-gray-600">No conflict events loaded</div>
+            <button onClick={handleManualRefresh} className="text-xs text-blue-400 hover:text-blue-300 underline">
+              Fetch now
+            </button>
+          </div>
         )}
       </div>
     </div>

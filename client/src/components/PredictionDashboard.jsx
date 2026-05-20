@@ -50,11 +50,8 @@ export default function PredictionDashboard() {
     refetchInterval: 60_000,
   });
 
-  const { data: feedEvents = [] } = useQuery({
-    queryKey: ['feed-conflicts'],
-    queryFn: () => fetch('/api/feed/conflicts').then(r => r.json()),
-    staleTime: 30_000,
-  });
+  const { data: feedData } = useQuery({ queryKey: ['feed-conflicts'], staleTime: 0 });
+  const feedEvents = feedData?.events || (Array.isArray(feedData) ? feedData : []);
 
   const resolveMutation = useMutation({
     mutationFn: (id) => fetch(`/api/predictions/resolve/${id}`, { method: 'POST' }).then(r => r.json()),

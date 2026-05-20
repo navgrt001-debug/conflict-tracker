@@ -10,11 +10,11 @@ export default function Dashboard({ conflicts }) {
   const [selectedConflict, setSelectedConflict] = useState(null);
   const [mobileTab, setMobileTab] = useState('map');
 
-  const { data: gdeltEvents = [] } = useQuery({
+  const { data: feedData } = useQuery({
     queryKey: ['feed-conflicts'],
-    queryFn: () => fetch('/api/feed/conflicts').then(r => r.json()),
-    staleTime: 30_000,
+    staleTime: 0,
   });
+  const gdeltEvents = feedData?.events || (Array.isArray(feedData) ? feedData : []);
 
   const handleSelectEvent = (event) => {
     setSelectedEvent(event);

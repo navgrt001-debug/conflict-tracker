@@ -1,10 +1,10 @@
 const express = require('express');
-const { getEvents, getPrices, getSummary, getChainCache, setChainCache } = require('../services/dataFeed');
+const { getEvents, getPrices, getSummary, getChainCache, setChainCache, getNewsUpdatedAt, refresh } = require('../services/dataFeed');
 const { generateCausalChain } = require('../services/causalChain');
 const router = express.Router();
 
 router.get('/conflicts', (req, res) => {
-  res.json(getEvents());
+  res.json({ events: getEvents(), updatedAt: getNewsUpdatedAt() });
 });
 
 router.get('/prices', (req, res) => {
@@ -13,6 +13,16 @@ router.get('/prices', (req, res) => {
 
 router.get('/summary', (req, res) => {
   res.json(getSummary());
+});
+
+// Manual refresh trigger — client can call this to force a feed update
+router.post('/refresh', async (req, res) => {
+  try {
+    await refresh();
+    res.json({ ok: true, updatedAt: getNewsUpdatedAt(), count: getEvents().length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.get('/causal-chain/:eventId', async (req, res) => {

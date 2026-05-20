@@ -3,8 +3,14 @@ const NodeCache = require('node-cache');
 const cron = require('node-cron');
 const Parser = require('rss-parser');
 
-const cache = new NodeCache({ stdTTL: 900 });
-const rss = new Parser({ timeout: 12000, headers: { 'User-Agent': 'Mozilla/5.0' } });
+const cache = new NodeCache({ stdTTL: 300 }); // 5-min TTL (was 15)
+const rss = new Parser({
+  timeout: 15000,
+  headers: {
+    'User-Agent': 'Mozilla/5.0 (compatible; ConflictTracker/1.0; +https://github.com)',
+    'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+  },
+});
 
 const COMMODITY_SYMBOLS = {
   'CL=F': 'WTI Crude Oil',
@@ -16,12 +22,14 @@ const COMMODITY_SYMBOLS = {
 
 const FX_WANT = ['TRY', 'ZAR', 'BRL', 'NGN', 'EGP', 'EUR', 'GBP', 'JPY'];
 
-// Free RSS feeds — no API key needed
 const RSS_FEEDS = [
-  { url: 'https://feeds.bbci.co.uk/news/world/rss.xml',         source: 'BBC News' },
-  { url: 'https://www.aljazeera.com/xml/rss/all.xml',           source: 'Al Jazeera' },
-  { url: 'https://rss.dw.com/rdf/rss-en-world',                 source: 'DW News' },
-  { url: 'https://feeds.skynews.com/feeds/rss/world.xml',       source: 'Sky News' },
+  { url: 'https://feeds.bbci.co.uk/news/world/rss.xml',              source: 'BBC News' },
+  { url: 'https://www.aljazeera.com/xml/rss/all.xml',                source: 'Al Jazeera' },
+  { url: 'https://rss.dw.com/rdf/rss-en-world',                      source: 'DW News' },
+  { url: 'https://feeds.skynews.com/feeds/rss/world.xml',            source: 'Sky News' },
+  { url: 'https://www.theguardian.com/world/rss',                    source: 'The Guardian' },
+  { url: 'https://feeds.reuters.com/reuters/worldNews',              source: 'Reuters' },
+  { url: 'https://rss.nytimes.com/services/xml/rss/nyt/World.xml',   source: 'NY Times' },
 ];
 
 const CONFLICT_KEYWORDS = [
@@ -29,6 +37,8 @@ const CONFLICT_KEYWORDS = [
   'conflict', 'sanctions', 'offensive', 'fighting', 'bombs', 'ceasefire',
   'invasion', 'rebel', 'coup', 'protest', 'crisis', 'tension', 'strike',
   'nuclear', 'refugee', 'displaced', 'occupation', 'siege', 'blockade',
+  'drone', 'artillery', 'casualty', 'casualties', 'combat', 'assault',
+  'explosion', 'shoot', 'gunfire', 'shelling', 'violence', 'unrest',
 ];
 
 function isRelevant(title = '', summary = '') {
@@ -38,10 +48,10 @@ function isRelevant(title = '', summary = '') {
 
 function severityFromTitle(title = '') {
   const t = title.toLowerCase();
-  if (/killed|bombing|airstrike|massacre|invasion|explo/.test(t)) return Math.floor(Math.random() * 2) + 8;
-  if (/conflict|sanctions|missile|troops|offensive|fighting|coup/.test(t)) return Math.floor(Math.random() * 2) + 6;
-  if (/tensions|protest|dispute|crisis|emergency|strike/.test(t)) return Math.floor(Math.random() * 2) + 4;
-  return Math.floor(Math.random() * 2) + 3;
+  if (/killed|bombing|airstrike|massacre|invasion|explo|casualt|combat/.test(t)) return 8 + (Math.random() > 0.5 ? 1 : 0);
+  if (/conflict|sanctions|missile|troops|offensive|fighting|coup|drone|shelling/.test(t)) return 6 + (Math.random() > 0.5 ? 1 : 0);
+  if (/tensions|protest|dispute|crisis|emergency|strike|violence|unrest/.test(t)) return 4 + (Math.random() > 0.5 ? 1 : 0);
+  return 3 + (Math.random() > 0.5 ? 1 : 0);
 }
 
 function stableId(url) {
@@ -51,9 +61,12 @@ function stableId(url) {
 }
 
 function extractCountry(title = '', feedSource = '') {
-  const COUNTRIES = ['Ukraine', 'Russia', 'Israel', 'Gaza', 'Sudan', 'Myanmar', 'Iran', 'China',
+  const COUNTRIES = [
+    'Ukraine', 'Russia', 'Israel', 'Gaza', 'Sudan', 'Myanmar', 'Iran', 'China',
     'Taiwan', 'Syria', 'Yemen', 'Somalia', 'Ethiopia', 'Mali', 'Niger', 'Pakistan',
-    'India', 'Haiti', 'Mexico', 'Colombia', 'Congo', 'DRC', 'Nigeria', 'Lebanon'];
+    'India', 'Haiti', 'Mexico', 'Colombia', 'Congo', 'DRC', 'Nigeria', 'Lebanon',
+    'Libya', 'Afghanistan', 'Iraq', 'Kosovo', 'Armenia', 'Azerbaijan', 'Venezuela',
+  ];
   const found = COUNTRIES.find(c => title.includes(c));
   return found || feedSource;
 }
@@ -63,7 +76,7 @@ async function fetchOneFeed(feed) {
     const parsed = await rss.parseURL(feed.url);
     return (parsed.items || [])
       .filter(item => isRelevant(item.title, item.contentSnippet))
-      .slice(0, 10)
+      .slice(0, 12)
       .map(item => ({
         id: stableId(item.link || item.title),
         title: item.title || 'Untitled',
@@ -85,18 +98,25 @@ async function fetchNews() {
     const results = await Promise.all(RSS_FEEDS.map(fetchOneFeed));
     const all = results.flat();
 
-    // Deduplicate by id, sort by severity desc then date desc
     const seen = new Set();
     const unique = all
       .filter(e => { if (seen.has(e.id)) return false; seen.add(e.id); return true; })
-      .sort((a, b) => b.severity - a.severity || new Date(b.seendate) - new Date(a.seendate))
-      .slice(0, 30);
+      .sort((a, b) => {
+        // Sort by date first (most recent first), then severity
+        const dateDiff = new Date(b.seendate) - new Date(a.seendate);
+        if (Math.abs(dateDiff) > 3600000) return dateDiff; // >1h apart → use date
+        return b.severity - a.severity;
+      })
+      .slice(0, 40);
 
     if (unique.length > 0) {
       cache.set('news_events', unique);
-      console.log(`[dataFeed] Fetched ${unique.length} news events from RSS`);
+      cache.set('news_updated_at', new Date().toISOString());
+      console.log(`[dataFeed] Fetched ${unique.length} events from ${results.filter(r => r.length > 0).length}/${RSS_FEEDS.length} feeds`);
+    } else {
+      console.warn('[dataFeed] All RSS feeds returned 0 relevant events — keeping cached data');
     }
-    return unique;
+    return unique.length > 0 ? unique : (cache.get('news_events') || []);
   } catch (err) {
     console.error('[dataFeed] News fetch error:', err.message);
     return cache.get('news_events') || [];
@@ -164,13 +184,14 @@ async function refresh() {
 
 function startScheduler() {
   refresh();
-  cron.schedule('*/15 * * * *', refresh);
+  cron.schedule('*/5 * * * *', refresh); // every 5 min (was 15)
 }
 
 function getEvents() { return cache.get('news_events') || []; }
 function getPrices() { return cache.get('prices') || { commodities: [], fx: [], updatedAt: null }; }
+function getNewsUpdatedAt() { return cache.get('news_updated_at') || null; }
 function getSummary() { return { events: getEvents(), prices: getPrices() }; }
 function setChainCache(id, chain) { cache.set(`chain_${id}`, chain, 3600); }
 function getChainCache(id) { return cache.get(`chain_${id}`) || null; }
 
-module.exports = { startScheduler, getEvents, getPrices, getSummary, setChainCache, getChainCache };
+module.exports = { startScheduler, getEvents, getPrices, getNewsUpdatedAt, getSummary, setChainCache, getChainCache, refresh };
