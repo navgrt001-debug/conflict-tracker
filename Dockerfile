@@ -2,22 +2,20 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# --- Server dependencies ---
-COPY server/package*.json ./server/
-RUN cd server && npm install --omit=dev
+# Install server dependencies
+COPY server/package.json ./server/package.json
+RUN cd server && npm install
 
-# --- Client dependencies + build ---
-COPY client/package*.json ./client/
+# Install client dependencies
+COPY client/package.json ./client/package.json
 RUN cd client && npm install
 
+# Build Vite frontend
 COPY client/ ./client/
 RUN cd client && npm run build
 
-# --- Copy server source ---
+# Copy server source (includes data/ static files)
 COPY server/ ./server/
-
-# --- Copy static data files ---
-COPY server/data/ ./server/data/
 
 EXPOSE 3001
 
