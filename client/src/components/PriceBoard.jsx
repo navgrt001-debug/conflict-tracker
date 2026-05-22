@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { SparklineChart } from './SparklineChart';
 
+const API = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api';
+
 const FX_NAMES = {
   TRY: 'Turkish Lira', ZAR: 'S. African Rand', BRL: 'Brazilian Real',
   NGN: 'Nigerian Naira', EGP: 'Egyptian Pound', EUR: 'Euro',
@@ -41,7 +43,7 @@ function PriceCard({ item }) {
 export default function PriceBoard() {
   const { data, isLoading } = useQuery({
     queryKey: ['feed-prices'],
-    queryFn: () => fetch('/api/feed/prices').then(r => r.json()),
+    queryFn: () => fetch(`${API}/feed/prices`).then(r => r.json()),
     refetchInterval: 60_000,
     staleTime: 30_000,
   });

@@ -3,6 +3,8 @@ import { useState } from 'react';
 import PredictionCard from './PredictionCard';
 import { AccuracyTimeline, AccuracyByAsset } from './AccuracyChart';
 
+const API = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api';
+
 const ASSETS = [
   { asset: 'CL=F',   label: 'WTI Crude' },
   { asset: 'GC=F',   label: 'Gold' },
@@ -34,19 +36,19 @@ export default function PredictionDashboard() {
 
   const { data: active = [], isLoading: activeLoading } = useQuery({
     queryKey: ['predictions-active'],
-    queryFn: () => fetch('/api/predictions/active').then(r => r.json()),
+    queryFn: () => fetch(`${API}/predictions/active`).then(r => r.json()),
     refetchInterval: 30_000,
   });
 
   const { data: history = [], isLoading: historyLoading } = useQuery({
     queryKey: ['predictions-history'],
-    queryFn: () => fetch('/api/predictions/history').then(r => r.json()),
+    queryFn: () => fetch(`${API}/predictions/history`).then(r => r.json()),
     refetchInterval: 60_000,
   });
 
   const { data: accuracy } = useQuery({
     queryKey: ['predictions-accuracy'],
-    queryFn: () => fetch('/api/predictions/accuracy').then(r => r.json()),
+    queryFn: () => fetch(`${API}/predictions/accuracy`).then(r => r.json()),
     refetchInterval: 60_000,
   });
 
@@ -54,7 +56,7 @@ export default function PredictionDashboard() {
   const feedEvents = feedData?.events || (Array.isArray(feedData) ? feedData : []);
 
   const resolveMutation = useMutation({
-    mutationFn: (id) => fetch(`/api/predictions/resolve/${id}`, { method: 'POST' }).then(r => r.json()),
+    mutationFn: (id) => fetch(`${API}/predictions/resolve/${id}`, { method: 'POST' }).then(r => r.json()),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['predictions-active'] });
       qc.invalidateQueries({ queryKey: ['predictions-history'] });
@@ -67,7 +69,7 @@ export default function PredictionDashboard() {
     setGenerating(true);
     setGenMsg('');
     try {
-      const r = await fetch('/api/predictions/generate', {
+      const r = await fetch(`${API}/predictions/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ eventId: genEventId, asset: genAsset }),

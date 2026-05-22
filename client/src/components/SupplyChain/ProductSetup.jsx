@@ -1,5 +1,7 @@
 import { useState } from 'react';
 
+const API = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api';
+
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'SGD'];
 const REGIONS = ['North America', 'Europe', 'Southeast Asia', 'China', 'Latin America', 'Middle East', 'Africa', 'South Asia', 'ANZ'];
 const SENSITIVITY = ['low', 'medium', 'high'];
@@ -86,11 +88,11 @@ export default function ProductSetup({ companyId, materials = [], onSaved, onClo
       const body = { ...form, current_selling_price: Number(form.current_selling_price), monthly_units: Number(form.monthly_units) };
       let res;
       if (editing) {
-        res = await fetch(`/api/pricing/products/${companyId}/${initialProduct.id}`, {
+        res = await fetch(`${API}/pricing/products/${companyId}/${initialProduct.id}`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
         });
       } else {
-        res = await fetch('/api/pricing/products', {
+        res = await fetch(`${API}/pricing/products`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ company_id: companyId, ...body }),
         });
       }

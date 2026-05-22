@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
+const API = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api';
+
 const SENTIMENT_STYLE = {
   'risk-off': { label: 'RISK-OFF', cls: 'bg-red-900 border-red-700 text-red-300' },
   'risk-on':  { label: 'RISK-ON',  cls: 'bg-green-900 border-green-700 text-green-300' },
@@ -14,7 +16,7 @@ const DIR_STYLE = {
 export default function CausalChain({ event }) {
   const { data: chain, isLoading, error, isFetching } = useQuery({
     queryKey: ['causal-chain', event?.id],
-    queryFn: () => fetch(`/api/feed/causal-chain/${event.id}`).then(r => {
+    queryFn: () => fetch(`${API}/feed/causal-chain/${event.id}`).then(r => {
       if (!r.ok) return r.json().then(e => Promise.reject(e));
       return r.json();
     }),
