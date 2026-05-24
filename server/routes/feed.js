@@ -1,6 +1,8 @@
 const express = require('express');
-const { getEvents, getPrices, getSummary, getChainCache, setChainCache, getNewsUpdatedAt, refresh } = require('../services/dataFeed');
+const { getEvents, getPrices, getSummary, getChainCache, setChainCache, getNewsUpdatedAt, refresh, fetchOneSymbol } = require('../services/dataFeed');
 const { generateCausalChain } = require('../services/causalChain');
+const NodeCache = require('node-cache');
+const lookupCache = new NodeCache({ stdTTL: 300 });
 const router = express.Router();
 
 router.get('/conflicts', (req, res) => {
@@ -23,6 +25,29 @@ router.post('/refresh', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Lookup any Yahoo Finance symbol on demand (e.g. user-added custom commodity)
+router.get('/prices/lookup', async (req, res) => {
+  const symbol = (req.query.symbol || '').toUpperCase().trim();
+  if (!symbol) return res.status(400).json({ error: 'symbol required' });
+
+  const cached = lookupCache.get(`lookup_${symbol}`);
+  if (cached) return res.json(cached);
+
+  // Check if it's already in the batch price data
+  const prices = getPrices();
+  const existing = prices.commodities.find(c => c.symbol === symbol);
+  if (existing) {
+    lookupCache.set(`lookup_${symbol}`, existing);
+    return res.json(existing);
+  }
+
+  const result = await fetchOneSymbol(symbol);
+  if (!result) return res.status(404).json({ error: `Symbol "${symbol}" not found on Yahoo Finance` });
+
+  lookupCache.set(`lookup_${symbol}`, result);
+  res.json(result);
 });
 
 router.get('/causal-chain/:eventId', async (req, res) => {

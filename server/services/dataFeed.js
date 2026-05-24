@@ -12,31 +12,47 @@ const rss = new Parser({
   },
 });
 
+// Batch-fetched every 5 min — covers major commodities across all categories
 const COMMODITY_SYMBOLS = {
+  // Energy
   'CL=F':    'WTI Crude Oil',
   'BZ=F':    'Brent Crude',
+  'NG=F':    'Natural Gas',
+  'HO=F':    'Heating Oil',
+  'RB=F':    'Gasoline RBOB',
+  // Metals – precious
   'GC=F':    'Gold',
   'SI=F':    'Silver',
-  'HG=F':    'Copper',
   'PA=F':    'Palladium',
   'PL=F':    'Platinum',
+  // Metals – industrial
+  'HG=F':    'Copper',
+  'ALI=F':   'Aluminum',
+  // Grains & oilseeds
   'ZW=F':    'Wheat',
   'ZC=F':    'Corn',
   'ZS=F':    'Soybeans',
-  'NG=F':    'Natural Gas',
-  'HO=F':    'Heating Oil',
+  'ZM=F':    'Soybean Meal',
+  'ZL=F':    'Soybean Oil',
+  'ZO=F':    'Oats',
+  'ZR=F':    'Rough Rice',
+  // Softs
   'CC=F':    'Cocoa',
   'KC=F':    'Coffee',
+  'CT=F':    'Cotton',
+  'SB=F':    'Sugar',
+  'OJ=F':    'Orange Juice',
+  // Livestock
+  'LE=F':    'Live Cattle',
+  'GF=F':    'Feeder Cattle',
+  'HE=F':    'Lean Hogs',
+  // Crypto
   'BTC-USD': 'Bitcoin',
   'ETH-USD': 'Ethereum',
+  'SOL-USD': 'Solana',
+  'BNB-USD': 'BNB',
+  'XRP-USD': 'XRP',
 };
-
-const FX_WANT = [
-  'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF',
-  'CNY', 'INR', 'TRY', 'ZAR', 'BRL', 'NGN',
-  'EGP', 'MXN', 'KRW', 'SAR', 'AED', 'RUB',
-  'HUF', 'PLN',
-];
 
 const RSS_FEEDS = [
   { url: 'https://feeds.bbci.co.uk/news/world/rss.xml',              source: 'BBC News' },
@@ -175,8 +191,9 @@ async function fetchPrices() {
       ...Object.keys(COMMODITY_SYMBOLS).map(fetchOneSymbol),
     ]);
 
+    // Return ALL available currency rates — client filters to user selection
     const fx = fxData?.rates
-      ? Object.entries(fxData.rates).filter(([code]) => FX_WANT.includes(code)).map(([code, rate]) => {
+      ? Object.entries(fxData.rates).map(([code, rate]) => {
           const prev = cache.get(`fx_prev_${code}`);
           const changePct = prev ? ((rate - prev) / prev) * 100 : 0;
           if (!prev) cache.set(`fx_prev_${code}`, rate, 86400);
@@ -210,4 +227,4 @@ function getSummary() { return { events: getEvents(), prices: getPrices() }; }
 function setChainCache(id, chain) { cache.set(`chain_${id}`, chain, 3600); }
 function getChainCache(id) { return cache.get(`chain_${id}`) || null; }
 
-module.exports = { startScheduler, getEvents, getPrices, getNewsUpdatedAt, getSummary, setChainCache, getChainCache, refresh };
+module.exports = { startScheduler, getEvents, getPrices, getNewsUpdatedAt, getSummary, setChainCache, getChainCache, refresh, fetchOneSymbol };
