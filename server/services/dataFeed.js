@@ -13,14 +13,30 @@ const rss = new Parser({
 });
 
 const COMMODITY_SYMBOLS = {
-  'CL=F': 'WTI Crude Oil',
-  'BZ=F': 'Brent Crude',
-  'GC=F': 'Gold',
-  'ZW=F': 'Wheat',
-  'NG=F': 'Natural Gas',
+  'CL=F':    'WTI Crude Oil',
+  'BZ=F':    'Brent Crude',
+  'GC=F':    'Gold',
+  'SI=F':    'Silver',
+  'HG=F':    'Copper',
+  'PA=F':    'Palladium',
+  'PL=F':    'Platinum',
+  'ZW=F':    'Wheat',
+  'ZC=F':    'Corn',
+  'ZS=F':    'Soybeans',
+  'NG=F':    'Natural Gas',
+  'HO=F':    'Heating Oil',
+  'CC=F':    'Cocoa',
+  'KC=F':    'Coffee',
+  'BTC-USD': 'Bitcoin',
+  'ETH-USD': 'Ethereum',
 };
 
-const FX_WANT = ['TRY', 'ZAR', 'BRL', 'NGN', 'EGP', 'EUR', 'GBP', 'JPY'];
+const FX_WANT = [
+  'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF',
+  'CNY', 'INR', 'TRY', 'ZAR', 'BRL', 'NGN',
+  'EGP', 'MXN', 'KRW', 'SAR', 'AED', 'RUB',
+  'HUF', 'PLN',
+];
 
 const RSS_FEEDS = [
   { url: 'https://feeds.bbci.co.uk/news/world/rss.xml',              source: 'BBC News' },
