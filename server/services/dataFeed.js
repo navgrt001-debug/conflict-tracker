@@ -183,6 +183,30 @@ async function fetchOneSymbol(symbol) {
   }
 }
 
+// Fetch yesterday's FX rates from Frankfurter (free, no key, ~33 major currencies).
+// Used as daily-change baseline so changePct reflects real 24-hour movement.
+async function fetchFXBaseline() {
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  // Skip weekends — forex markets are closed; walk back to Friday
+  const dow = yesterday.getDay();
+  if (dow === 0) yesterday.setDate(yesterday.getDate() - 2); // Sun → Fri
+  if (dow === 6) yesterday.setDate(yesterday.getDate() - 1); // Sat → Fri
+  const dateStr = yesterday.toISOString().split('T')[0];
+  try {
+    const { data } = await axios.get(
+      `https://api.frankfurter.app/${dateStr}?from=USD`,
+      { timeout: 10000 }
+    );
+    if (data?.rates) {
+      cache.set('fx_baseline', data.rates, 90000); // ~25h TTL, refresh daily
+      console.log(`[dataFeed] FX baseline loaded (${dateStr}): ${Object.keys(data.rates).length} currencies`);
+    }
+  } catch (err) {
+    console.warn('[dataFeed] FX baseline fetch failed:', err.message);
+  }
+}
+
 async function fetchPrices() {
   try {
     const [fxData, ...commodities] = await Promise.all([
@@ -191,13 +215,15 @@ async function fetchPrices() {
       ...Object.keys(COMMODITY_SYMBOLS).map(fetchOneSymbol),
     ]);
 
-    // Return ALL available currency rates — client filters to user selection
+    // baseline = yesterday's rates for daily % change; fallback to open.er prev_close
+    const baseline = cache.get('fx_baseline') || {};
+
     const fx = fxData?.rates
       ? Object.entries(fxData.rates).map(([code, rate]) => {
-          const prev = cache.get(`fx_prev_${code}`);
-          const changePct = prev ? ((rate - prev) / prev) * 100 : 0;
-          if (!prev) cache.set(`fx_prev_${code}`, rate, 86400);
-          return { symbol: code, name: `USD/${code}`, price: rate, changePct, change: prev ? rate - prev : 0, type: 'fx', sparkline: [] };
+          const prevRate = baseline[code];
+          const changePct = prevRate ? ((rate - prevRate) / prevRate) * 100 : 0;
+          const change    = prevRate ? rate - prevRate : 0;
+          return { symbol: code, name: `USD/${code}`, price: rate, changePct, change, type: 'fx', sparkline: [] };
         })
       : [];
 
@@ -216,8 +242,12 @@ async function refresh() {
 }
 
 function startScheduler() {
+  // Load yesterday's FX rates immediately, then refresh every 24h at midnight
+  fetchFXBaseline();
+  cron.schedule('1 0 * * *', fetchFXBaseline); // 00:01 UTC daily
+
   refresh();
-  cron.schedule('*/5 * * * *', refresh); // every 5 min (was 15)
+  cron.schedule('*/5 * * * *', refresh);
 }
 
 function getEvents() { return cache.get('news_events') || []; }
