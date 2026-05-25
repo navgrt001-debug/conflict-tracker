@@ -214,7 +214,7 @@ export default function PLForecastPanel({ companyId, company }) {
   const tolerance = company?.risk_tolerance?.max_profit_drop_pct || 15;
 
   if (isLoading || isFetching) return (
-    <div className="flex flex-col items-center justify-center h-64 gap-4 text-center p-6">
+    <div className="flex flex-col items-center justify-center h-64 w-full gap-4 text-center p-6">
       <div className="relative w-12 h-12">
         <div className="absolute inset-0 rounded-full border-2 border-gray-800" />
         <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-blue-500 animate-spin" />
@@ -231,7 +231,7 @@ export default function PLForecastPanel({ companyId, company }) {
   );
 
   if (isError || !data) return (
-    <div className="flex flex-col items-center justify-center h-64 gap-3 text-center p-6">
+    <div className="flex flex-col items-center justify-center h-64 w-full gap-3 text-center p-6">
       <div className="text-3xl">⚠️</div>
       <div className="text-sm text-red-400">Analysis failed to generate</div>
       <button onClick={() => refetch()} className="text-xs px-3 py-1.5 bg-blue-900/30 border border-blue-800 text-blue-300 rounded-lg">Retry</button>

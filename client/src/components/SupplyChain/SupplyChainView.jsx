@@ -88,13 +88,13 @@ export default function SupplyChainView() {
 
   // Loading
   if (isLoading) return (
-    <div className="flex items-center justify-center h-full">
+    <div className="flex items-center justify-center h-full w-full">
       <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
     </div>
   );
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full w-full overflow-hidden">
       {setupOpen && (
         <CompanySetup
           onCreated={handleCreated}
