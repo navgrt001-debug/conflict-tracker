@@ -6,3 +6,9 @@ dockerfilePath = "Dockerfile"
 startCommand = "node server/index.js"
 healthcheckPath = "/api/health"
 restartPolicyType = "on_failure"
+
+# Mount a Railway Volume at /app/server/data to persist:
+# - users.json (accounts)
+# - supplyChain.json (supply chain profiles)
+# - portfolios.json, pricingProfiles.json, etc.
+# In Railway dashboard: Service → Volumes → Mount Path = /app/server/data
