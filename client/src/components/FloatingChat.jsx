@@ -118,8 +118,9 @@ function ChatWindow({ onClose, sessionId }) {
 
   return (
     <div
-      className="fixed z-50 flex flex-col shadow-2xl rounded-2xl overflow-hidden border border-blue-800/60 bg-card"
+      className="fixed flex flex-col shadow-2xl rounded-2xl overflow-hidden border border-blue-800/60 bg-card"
       style={{
+        zIndex: 100000,
         width: 360,
         height: 540,
         bottom: 88,
@@ -378,7 +379,8 @@ export default function FloatingChat({ sessionId }) {
       {/* Floating avatar button */}
       <button
         onClick={handleToggle}
-        className="fixed bottom-6 right-6 z-50 focus:outline-none group"
+        className="fixed bottom-6 right-6 focus:outline-none group"
+        style={{ zIndex: 100001 }}
         aria-label="Open geopolitical intelligence chat"
         title="Geopolitical Intelligence Chat"
       >
