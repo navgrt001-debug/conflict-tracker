@@ -155,32 +155,89 @@ async function fetchNews() {
   }
 }
 
-async function fetchOneSymbol(symbol) {
-  try {
-    const { data } = await axios.get(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`,
-      { params: { interval: '1h', range: '5d' }, headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 10000 }
-    );
-    const result = data?.chart?.result?.[0];
-    if (!result) return null;
-    const meta = result.meta;
-    const closes = result.indicators?.quote?.[0]?.close || [];
-    const timestamps = result.timestamp || [];
-    const sparkline = timestamps.map((t, i) => closes[i]).filter(v => v != null).slice(-24);
-    return {
-      symbol,
-      name: COMMODITY_SYMBOLS[symbol] || meta.shortName || symbol,
-      price: meta.regularMarketPrice,
-      previousClose: meta.chartPreviousClose,
-      change: meta.regularMarketPrice - meta.chartPreviousClose,
-      changePct: ((meta.regularMarketPrice - meta.chartPreviousClose) / meta.chartPreviousClose) * 100,
-      currency: meta.currency || 'USD',
-      sparkline,
-      type: 'commodity',
-    };
-  } catch {
-    return null;
+const YF_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Accept': 'application/json, text/plain, */*',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Referer': 'https://finance.yahoo.com/',
+  'Origin': 'https://finance.yahoo.com',
+};
+
+// Batch-fetch ALL commodity symbols in a single request (avoids rate-limiting)
+async function fetchAllCommodities() {
+  const symbols = Object.keys(COMMODITY_SYMBOLS).join(',');
+  const urls = [
+    `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbols)}&lang=en-US`,
+    `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbols)}&lang=en-US`,
+  ];
+
+  for (const url of urls) {
+    try {
+      const { data } = await axios.get(url, { headers: YF_HEADERS, timeout: 15000 });
+      const quotes = data?.quoteResponse?.result || [];
+      if (!quotes.length) continue;
+
+      const results = quotes
+        .filter(q => q.regularMarketPrice != null)
+        .map(q => ({
+          symbol: q.symbol,
+          name: COMMODITY_SYMBOLS[q.symbol] || q.shortName || q.symbol,
+          price: q.regularMarketPrice,
+          previousClose: q.regularMarketPreviousClose,
+          change: q.regularMarketChange ?? 0,
+          changePct: q.regularMarketChangePercent ?? 0,
+          currency: q.currency || 'USD',
+          sparkline: [],
+          type: 'commodity',
+        }));
+
+      if (results.length > 0) {
+        console.log(`[dataFeed] Commodities batch: ${results.length}/${Object.keys(COMMODITY_SYMBOLS).length} symbols`);
+        cache.set('commodities_cache', results);
+        return results;
+      }
+    } catch (err) {
+      console.warn(`[dataFeed] Commodity batch failed (${url.includes('query2') ? 'q2' : 'q1'}):`, err.message);
+    }
   }
+
+  // Fall back to last good data
+  const fallback = cache.get('commodities_cache') || [];
+  console.warn(`[dataFeed] Using cached commodity data (${fallback.length} items)`);
+  return fallback;
+}
+
+// Single-symbol lookup for on-demand user requests
+async function fetchOneSymbol(symbol) {
+  // Check batch cache first
+  const batch = cache.get('commodities_cache') || [];
+  const cached = batch.find(c => c.symbol === symbol);
+  if (cached) return cached;
+
+  const urls = [
+    `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}&lang=en-US`,
+    `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}&lang=en-US`,
+  ];
+
+  for (const url of urls) {
+    try {
+      const { data } = await axios.get(url, { headers: YF_HEADERS, timeout: 10000 });
+      const q = data?.quoteResponse?.result?.[0];
+      if (!q || q.regularMarketPrice == null) continue;
+      return {
+        symbol: q.symbol,
+        name: COMMODITY_SYMBOLS[q.symbol] || q.shortName || q.symbol,
+        price: q.regularMarketPrice,
+        previousClose: q.regularMarketPreviousClose,
+        change: q.regularMarketChange ?? 0,
+        changePct: q.regularMarketChangePercent ?? 0,
+        currency: q.currency || 'USD',
+        sparkline: [],
+        type: 'commodity',
+      };
+    } catch { /* try next */ }
+  }
+  return null;
 }
 
 // Fetch yesterday's FX rates from Frankfurter (free, no key, ~33 major currencies).
@@ -209,10 +266,10 @@ async function fetchFXBaseline() {
 
 async function fetchPrices() {
   try {
-    const [fxData, ...commodities] = await Promise.all([
+    const [fxData, commodities] = await Promise.all([
       axios.get('https://open.er-api.com/v6/latest/USD', { timeout: 10000 })
         .then(r => r.data).catch(() => null),
-      ...Object.keys(COMMODITY_SYMBOLS).map(fetchOneSymbol),
+      fetchAllCommodities(),
     ]);
 
     // baseline = yesterday's rates for daily % change; fallback to open.er prev_close
@@ -227,7 +284,7 @@ async function fetchPrices() {
         })
       : [];
 
-    const prices = { commodities: commodities.filter(Boolean), fx, updatedAt: new Date().toISOString() };
+    const prices = { commodities, fx, updatedAt: new Date().toISOString() };
     cache.set('prices', prices);
     console.log(`[dataFeed] Prices updated — ${prices.commodities.length} commodities, ${prices.fx.length} FX`);
     return prices;
