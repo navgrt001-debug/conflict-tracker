@@ -130,7 +130,19 @@ Quarters: ${quarters.join(' → ')}
       "demand_impact_pct": <expected demand change % over 4 quarters>,
       "revenue_risk": "LOW|MEDIUM|HIGH|CRITICAL",
       "fx_risk": "LOW|MEDIUM|HIGH",
-      "analysis": "<specific 1-2 sentence insight on how this market affects revenue>"
+      "analysis": "<specific 1-2 sentence insight on how this market affects revenue>",
+      "social_signals": {
+        "consumer_sentiment": "positive|neutral|negative|very_negative",
+        "sentiment_trend": "improving|stable|worsening|rapidly_worsening",
+        "social_unrest_risk": "LOW|MEDIUM|HIGH|CRITICAL",
+        "boycott_risk": "LOW|MEDIUM|HIGH",
+        "brand_perception_risk": "LOW|MEDIUM|HIGH|CRITICAL",
+        "purchasing_intent_change_pct": <expected % change in purchase intent due to social factors>,
+        "consumer_behavior_shifts": ["<e.g. trading down to cheaper alternatives>", "<e.g. increased savings rate>"],
+        "trending_signals": ["<specific social signal, event, or sentiment driver>", "<signal 2>"],
+        "social_impact_on_demand_pct": <additional demand impact purely from social factors, can be negative>,
+        "summary": "<1-2 sentence summary of the social/sentiment landscape and how it amplifies or offsets economic factors>"
+      }
     }
   ],
 
@@ -170,7 +182,8 @@ Rules:
 - Sensitivity grid must include at minimum: Stress, Bear, Base, Bull, Recovery scenarios
 - For materials with no risky sources, still list 2-3 alternative country options
 - All dollar figures must be grounded in the P&L baseline above
-- Flag breach_tolerance = true whenever net_profit_impact_pct exceeds ${tolerance}%`;
+- Flag breach_tolerance = true whenever net_profit_impact_pct exceeds ${tolerance}%
+- For social_signals: reflect real social media trends, consumer activism patterns, geopolitical sentiment, and conflict-related boycott risks in each buyer country. Consider how local inflation frustration, political instability, anti-brand sentiment, or war proximity affects consumer willingness to buy. purchasing_intent_change_pct and social_impact_on_demand_pct should be separate from and additive to the economic demand_impact_pct`;
 }
 
 async function generatePLAnalysis(companyId, conflicts) {

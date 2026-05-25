@@ -128,47 +128,201 @@ function QuarterCard({ q, tolerance }) {
   );
 }
 
+const SENTIMENT_CONFIG = {
+  positive:       { color: 'text-green-400',  bg: 'bg-green-900/20',  border: 'border-green-800', icon: '😊' },
+  neutral:        { color: 'text-gray-400',   bg: 'bg-gray-800/30',   border: 'border-gray-700',  icon: '😐' },
+  negative:       { color: 'text-amber-400',  bg: 'bg-amber-900/20',  border: 'border-amber-800', icon: '😟' },
+  very_negative:  { color: 'text-red-400',    bg: 'bg-red-900/20',    border: 'border-red-800',   icon: '😡' },
+};
+
+const TREND_ARROW = {
+  improving: { icon: '↑', color: 'text-green-400' },
+  stable:    { icon: '→', color: 'text-gray-400' },
+  worsening: { icon: '↓', color: 'text-amber-400' },
+  rapidly_worsening: { icon: '↓↓', color: 'text-red-400' },
+};
+
+function SocialSignalsBadge({ level }) {
+  const colors = {
+    LOW: 'bg-green-900/30 text-green-400 border-green-800',
+    MEDIUM: 'bg-amber-900/30 text-amber-400 border-amber-800',
+    HIGH: 'bg-red-900/30 text-red-400 border-red-800',
+    CRITICAL: 'bg-red-950 text-red-300 border-red-700',
+  };
+  return <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${colors[level] || colors.LOW}`}>{level}</span>;
+}
+
 function BuyerImpactRow({ b }) {
+  const [showSocial, setShowSocial] = useState(false);
   const flagMap = { improving: '↑', stable: '→', declining: '↓', sharply_declining: '↓↓' };
   const trendColor = {
     improving: 'text-green-400', stable: 'text-gray-400',
     declining: 'text-amber-400', sharply_declining: 'text-red-400',
   };
+
+  const ss = b.social_signals || {};
+  const sentCfg = SENTIMENT_CONFIG[ss.consumer_sentiment] || SENTIMENT_CONFIG.neutral;
+  const trendCfg = TREND_ARROW[ss.sentiment_trend] || TREND_ARROW.stable;
+  const hasSocial = !!ss.consumer_sentiment;
+
   return (
-    <div className="bg-surface border border-border rounded-xl p-4">
-      <div className="flex items-start justify-between mb-2">
-        <div>
-          <div className="text-sm font-semibold text-white">{b.country} <span className="text-gray-500 font-normal text-xs">({b.percentage}% of sales)</span></div>
-          <div className={`text-xs mt-0.5 ${RISK_COLORS[b.revenue_risk]?.text || 'text-gray-400'}`}>
-            Revenue risk: {b.revenue_risk}
+    <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      {/* Economic layer */}
+      <div className="p-4">
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <div className="text-sm font-semibold text-white">
+              {b.country} <span className="text-gray-500 font-normal text-xs">({b.percentage}% of sales)</span>
+            </div>
+            <div className={`text-xs mt-0.5 ${RISK_COLORS[b.revenue_risk]?.text || 'text-gray-400'}`}>
+              Revenue risk: {b.revenue_risk}
+            </div>
+          </div>
+          <div className="text-right">
+            <div className={`text-lg font-bold ${trendColor[b.purchasing_power_trend] || 'text-gray-400'}`}>
+              {flagMap[b.purchasing_power_trend]} {b.demand_impact_pct > 0 ? '+' : ''}{b.demand_impact_pct?.toFixed(1)}%
+            </div>
+            <div className="text-[10px] text-gray-500">Demand outlook</div>
           </div>
         </div>
-        <div className="text-right">
-          <div className={`text-lg font-bold ${trendColor[b.purchasing_power_trend] || 'text-gray-400'}`}>
-            {flagMap[b.purchasing_power_trend]} {b.demand_impact_pct > 0 ? '+' : ''}{b.demand_impact_pct?.toFixed(1)}%
+
+        <div className="grid grid-cols-3 gap-3 mb-3 text-center">
+          <div className="bg-card rounded-lg p-2">
+            <div className="text-sm font-bold text-white">{b.inflation_rate_pct?.toFixed(1)}%</div>
+            <div className="text-[9px] text-gray-600">Inflation</div>
           </div>
-          <div className="text-[10px] text-gray-500">Demand outlook</div>
+          <div className="bg-card rounded-lg p-2">
+            <div className={`text-sm font-bold ${(b.real_wage_growth_pct || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              {(b.real_wage_growth_pct || 0) > 0 ? '+' : ''}{b.real_wage_growth_pct?.toFixed(1) || '?'}%
+            </div>
+            <div className="text-[9px] text-gray-600">Real wages</div>
+          </div>
+          <div className="bg-card rounded-lg p-2">
+            <div className={`text-sm font-bold ${b.fx_risk === 'HIGH' ? 'text-red-400' : b.fx_risk === 'MEDIUM' ? 'text-amber-400' : 'text-green-400'}`}>
+              {b.fx_risk}
+            </div>
+            <div className="text-[9px] text-gray-600">FX risk</div>
+          </div>
         </div>
+
+        <p className="text-xs text-gray-400 leading-relaxed">{b.analysis}</p>
       </div>
-      <div className="grid grid-cols-3 gap-3 mb-2 text-center">
-        <div>
-          <div className="text-sm font-bold text-white">{b.inflation_rate_pct?.toFixed(1)}%</div>
-          <div className="text-[9px] text-gray-600">Inflation</div>
-        </div>
-        <div>
-          <div className={`text-sm font-bold ${(b.real_wage_growth_pct || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {(b.real_wage_growth_pct || 0) > 0 ? '+' : ''}{b.real_wage_growth_pct?.toFixed(1) || '?'}%
-          </div>
-          <div className="text-[9px] text-gray-600">Real wage growth</div>
-        </div>
-        <div>
-          <div className={`text-sm font-bold ${b.fx_risk === 'HIGH' ? 'text-red-400' : b.fx_risk === 'MEDIUM' ? 'text-amber-400' : 'text-green-400'}`}>
-            {b.fx_risk}
-          </div>
-          <div className="text-[9px] text-gray-600">FX risk</div>
-        </div>
-      </div>
-      <p className="text-xs text-gray-400 leading-relaxed">{b.analysis}</p>
+
+      {/* Social signals toggle */}
+      {hasSocial && (
+        <>
+          <button
+            onClick={() => setShowSocial(s => !s)}
+            className="w-full flex items-center justify-between px-4 py-2.5 bg-card border-t border-border hover:bg-gray-800/50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-base">{sentCfg.icon}</span>
+              <span className="text-xs font-semibold text-gray-300">Social Signals & Consumer Sentiment</span>
+              {ss.social_unrest_risk && ss.social_unrest_risk !== 'LOW' && (
+                <span className="text-[9px] bg-red-900/40 text-red-400 border border-red-800 px-1.5 py-0.5 rounded">
+                  ⚠ Unrest {ss.social_unrest_risk}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`text-xs font-bold ${sentCfg.color}`}>{ss.consumer_sentiment?.replace('_', ' ').toUpperCase()}</span>
+              <span className={`text-xs ${trendCfg.color}`}>{trendCfg.icon}</span>
+              <span className="text-gray-600 text-xs">{showSocial ? '▲' : '▼'}</span>
+            </div>
+          </button>
+
+          {showSocial && (
+            <div className={`p-4 border-t ${sentCfg.border} ${sentCfg.bg} space-y-4`}>
+
+              {/* Sentiment + intent row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className={`rounded-lg border p-3 ${sentCfg.border} bg-black/20`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-lg">{sentCfg.icon}</span>
+                    <div>
+                      <div className={`text-xs font-bold ${sentCfg.color}`}>{ss.consumer_sentiment?.replace('_', ' ').toUpperCase()}</div>
+                      <div className="text-[9px] text-gray-600">Consumer sentiment</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className="text-[9px] text-gray-500">Trend:</span>
+                    <span className={`text-xs font-bold ${trendCfg.color}`}>{trendCfg.icon} {ss.sentiment_trend?.replace('_', ' ')}</span>
+                  </div>
+                </div>
+                <div className="bg-black/20 rounded-lg border border-border p-3">
+                  <div className={`text-xl font-bold font-mono ${(ss.purchasing_intent_change_pct || 0) < 0 ? 'text-red-400' : 'text-green-400'}`}>
+                    {(ss.purchasing_intent_change_pct || 0) > 0 ? '+' : ''}{ss.purchasing_intent_change_pct?.toFixed(1) || '0'}%
+                  </div>
+                  <div className="text-[9px] text-gray-500 mt-0.5">Purchase intent change</div>
+                  {ss.social_impact_on_demand_pct != null && (
+                    <div className={`text-[10px] mt-1 ${ss.social_impact_on_demand_pct < 0 ? 'text-red-400' : 'text-green-400'}`}>
+                      Social demand impact: {ss.social_impact_on_demand_pct > 0 ? '+' : ''}{ss.social_impact_on_demand_pct?.toFixed(1)}%
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Risk badges row */}
+              <div className="flex flex-wrap gap-3">
+                {ss.social_unrest_risk && (
+                  <div className="flex flex-col items-center gap-1">
+                    <SocialSignalsBadge level={ss.social_unrest_risk} />
+                    <span className="text-[9px] text-gray-600">Unrest risk</span>
+                  </div>
+                )}
+                {ss.boycott_risk && (
+                  <div className="flex flex-col items-center gap-1">
+                    <SocialSignalsBadge level={ss.boycott_risk} />
+                    <span className="text-[9px] text-gray-600">Boycott risk</span>
+                  </div>
+                )}
+                {ss.brand_perception_risk && (
+                  <div className="flex flex-col items-center gap-1">
+                    <SocialSignalsBadge level={ss.brand_perception_risk} />
+                    <span className="text-[9px] text-gray-600">Brand perception</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Trending signals */}
+              {(ss.trending_signals || []).length > 0 && (
+                <div>
+                  <div className="text-[9px] text-gray-500 uppercase tracking-wider mb-1.5">📡 Trending signals</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {ss.trending_signals.map((sig, i) => (
+                      <span key={i} className="text-[10px] bg-blue-900/20 border border-blue-800/40 text-blue-300 rounded-full px-2.5 py-0.5">
+                        {sig}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Consumer behaviour shifts */}
+              {(ss.consumer_behavior_shifts || []).length > 0 && (
+                <div>
+                  <div className="text-[9px] text-gray-500 uppercase tracking-wider mb-1.5">🛒 Consumer behaviour shifts</div>
+                  <div className="space-y-1">
+                    {ss.consumer_behavior_shifts.map((shift, i) => (
+                      <div key={i} className="flex gap-1.5 text-xs text-gray-300">
+                        <span className="text-amber-500 shrink-0">→</span>
+                        <span>{shift}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Social summary */}
+              {ss.summary && (
+                <p className={`text-xs leading-relaxed italic ${sentCfg.color} opacity-80`}>
+                  "{ss.summary}"
+                </p>
+              )}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
