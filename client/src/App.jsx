@@ -8,8 +8,6 @@ import TradePanel from './components/panels/TradePanel';
 import PredictionPanel from './components/panels/PredictionPanel';
 import FloatingChat from './components/FloatingChat';
 import Dashboard from './components/Dashboard';
-import ScenarioEngine from './components/ScenarioEngine';
-import ScenarioComparison from './components/ScenarioComparison';
 import SupplyChainView from './components/SupplyChain/SupplyChainView';
 import useSession from './hooks/useSession';
 
@@ -23,8 +21,7 @@ const DETAIL_TABS = [
 const MAIN_VIEWS = [
   { id: 'dashboard',    icon: '📊', label: 'Dashboard' },
   { id: 'detail',       icon: '🗺️', label: 'Detail' },
-{ id: 'scenarios',    icon: '🔮', label: 'Scenarios' },
-  { id: 'supply-chain', icon: '🏭', label: 'Supply Chain' },
+{ id: 'supply-chain', icon: '🏭', label: 'Supply Chain' },
 ];
 
 export default function App() {
@@ -32,9 +29,7 @@ export default function App() {
   const [selected, setSelected] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [view, setView] = useState('dashboard');
-  const [savedScenarios, setSavedScenarios] = useState([]);
-  const [scenariosTab, setScenariosTab] = useState('analyze');
-  const [loading, setLoading] = useState(true);
+const [loading, setLoading] = useState(true);
 
   // mobile detail sub-view: 'list' | 'map' | 'panel'
   const [mobileDetailView, setMobileDetailView] = useState('list');
@@ -56,16 +51,6 @@ export default function App() {
 
   const panelWidth = activeTab === 'chat' ? 'md:w-[520px]' : 'md:w-96';
 
-  const handleSaveForComparison = (entry) => {
-    setSavedScenarios(prev => {
-      if (prev.some(s => s.id === entry.id)) return prev;
-      return [...prev, entry].slice(-2);
-    });
-  };
-
-  const handleRemoveFromComparison = (index) => {
-    setSavedScenarios(prev => prev.filter((_, i) => i !== index));
-  };
 
   return (
     <div className="flex flex-col h-screen bg-surface text-gray-200 overflow-hidden">
@@ -116,41 +101,6 @@ export default function App() {
           loading ? <LoadingState /> : <Dashboard conflicts={conflicts} />
         )}
 
-        {view === 'scenarios' && (
-          <div className="flex flex-col h-full overflow-hidden">
-            <div className="flex items-center gap-1 px-4 py-2 border-b border-border bg-card shrink-0">
-              {[
-                { id: 'analyze', label: '🔮 Analyze' },
-                { id: 'compare', label: `⚖ Compare${savedScenarios.length > 0 ? ` (${savedScenarios.length}/2)` : ''}` },
-              ].map(t => (
-                <button
-                  key={t.id}
-                  onClick={() => setScenariosTab(t.id)}
-                  className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-colors ${
-                    scenariosTab === t.id ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-300'
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-            <div className="flex-1 overflow-hidden">
-              {scenariosTab === 'analyze' && (
-                <ScenarioEngine savedScenarios={savedScenarios} onSaveForComparison={handleSaveForComparison} />
-              )}
-              {scenariosTab === 'compare' && (
-                <div className="h-full overflow-y-auto p-4 md:p-6">
-                  <div className="max-w-4xl mx-auto">
-                    <ScenarioComparison
-                      scenarios={[savedScenarios[0] || null, savedScenarios[1] || null]}
-                      onRemove={handleRemoveFromComparison}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
 
         {view === 'supply-chain' && (
           <div className="flex h-full overflow-hidden">
