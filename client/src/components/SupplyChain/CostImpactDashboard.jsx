@@ -1,152 +1,459 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import MaterialImpactCard from './MaterialImpactCard';
 import PLForecastPanel from './PLForecastPanel';
 import SensitivityGrid from './SensitivityGrid';
 
 const API = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api';
 
-const RISK_COLORS = {
-  CRITICAL: { text: 'text-red-400', bg: 'bg-red-900/20', bar: '#ef4444', border: 'border-red-800', gauge: '#ef4444' },
-  HIGH:     { text: 'text-orange-400', bg: 'bg-orange-900/20', bar: '#f97316', border: 'border-orange-700', gauge: '#f97316' },
-  MEDIUM:   { text: 'text-amber-400', bg: 'bg-amber-900/20', bar: '#f59e0b', border: 'border-amber-700', gauge: '#f59e0b' },
-  LOW:      { text: 'text-green-400', bg: 'bg-green-900/20', bar: '#22c55e', border: 'border-green-800', gauge: '#22c55e' },
-};
-
-function fmt(n) {
-  if (!n && n !== 0) return '—';
+// ── Full Report Generator ─────────────────────────────────────────────────────
+function fmtMoney(n) {
+  if (n == null) return '—';
   const abs = Math.abs(n);
-  if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
-  return `$${n.toFixed(0)}`;
+  const sign = n < 0 ? '-' : n > 0 ? '+' : '';
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`;
+  return `${sign}$${abs.toFixed(0)}`;
 }
 
-function RiskGauge({ level }) {
-  const scores = { LOW: 15, MEDIUM: 40, HIGH: 68, CRITICAL: 88 };
-  const score = scores[level] || 0;
-  const color = RISK_COLORS[level]?.gauge || '#22c55e';
-  const angle = (score / 100) * 180 - 90;
+function buildReportHTML(company, plData) {
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const pnl = company.pnl || {};
+  const rev = Number(pnl.annual_revenue) || 0;
+  const cogsPct = Number(pnl.cogs_pct) || 0;
+  const opexPct = Number(pnl.opex_pct) || 0;
+  const grossPct = 100 - cogsPct;
+  const netPct = grossPct - opexPct;
+  const tolerance = company.risk_tolerance?.max_profit_drop_pct || 15;
+
+  // ── Quarterly forecast table ────────────────────────────────────────────────
+  const qRows = (plData?.quarterly_forecast || []).map(q => {
+    const breach = q.breach_tolerance ? '⚠ BREACH' : '';
+    const impactStyle = (q.net_profit_impact_pct || 0) < 0 ? 'color:#c0392b' : 'color:#27ae60';
+    return `
+      <tr style="${q.breach_tolerance ? 'background:#fff0f0' : ''}">
+        <td style="padding:8px 10px;font-weight:600">${q.quarter} ${breach ? `<span style="color:#c0392b;font-size:9pt">${breach}</span>` : ''}</td>
+        <td style="padding:8px 10px;text-align:center;${(q.cogs_impact_pct || 0) > 0 ? 'color:#c0392b' : 'color:#27ae60'}">${q.cogs_impact_pct > 0 ? '+' : ''}${q.cogs_impact_pct?.toFixed(1) || '—'}%</td>
+        <td style="padding:8px 10px;text-align:center">${q.gross_margin_new_pct?.toFixed(1) || '—'}%</td>
+        <td style="padding:8px 10px;text-align:center;${impactStyle};font-weight:700">${q.net_profit_impact_pct > 0 ? '+' : ''}${q.net_profit_impact_pct?.toFixed(1) || '—'}%</td>
+        <td style="padding:8px 10px;text-align:right;${impactStyle}">${fmtMoney(q.net_profit_impact_abs)}</td>
+        <td style="padding:8px 10px;font-size:9pt;color:#555">${(q.key_drivers || []).slice(0, 2).join('; ')}</td>
+      </tr>`;
+  }).join('');
+
+  // ── Sensitivity grid table ──────────────────────────────────────────────────
+  const quarters = plData?.quarters || ['Q1', 'Q2', 'Q3', 'Q4'];
+  const gridRows = (plData?.sensitivity_grid || []).map(row => {
+    const impacts = row.quarterly_net_profit_impacts || [];
+    const cells = impacts.map((v, i) => {
+      const breach = Math.abs(v || 0) > tolerance;
+      const style = breach ? 'background:#fff0f0;color:#c0392b;font-weight:700' : (v || 0) < 0 ? 'color:#c0392b' : 'color:#27ae60';
+      return `<td style="padding:6px 8px;text-align:center;${style}">${v != null ? `${v > 0 ? '+' : ''}${v.toFixed(1)}%${breach ? ' ⚠' : ''}` : '—'}</td>`;
+    }).join('');
+    const annualStyle = (row.annual_net_profit_impact_abs || 0) < 0 ? 'color:#c0392b;font-weight:700' : 'color:#27ae60;font-weight:700';
+    return `
+      <tr>
+        <td style="padding:8px 10px;font-weight:600">${row.scenario}</td>
+        <td style="padding:8px 10px;text-align:center;${row.commodity_cost_change_pct > 0 ? 'color:#c0392b' : 'color:#27ae60'}">${row.commodity_cost_change_pct > 0 ? '+' : ''}${row.commodity_cost_change_pct}%</td>
+        <td style="padding:8px 10px;text-align:center">${row.likelihood || '—'}</td>
+        ${cells}
+        <td style="padding:8px 10px;text-align:right;${annualStyle}">${fmtMoney(row.annual_net_profit_impact_abs)}</td>
+      </tr>`;
+  }).join('');
+
+  // ── Buyer markets ───────────────────────────────────────────────────────────
+  const buyerRows = (plData?.buyer_market_impact || []).map(b => `
+    <tr>
+      <td style="padding:8px 10px;font-weight:600">${b.country}</td>
+      <td style="padding:8px 10px;text-align:center">${b.percentage}%</td>
+      <td style="padding:8px 10px;text-align:center">${b.inflation_rate_pct?.toFixed(1) || '—'}%</td>
+      <td style="padding:8px 10px;text-align:center">${b.real_wage_growth_pct != null ? `${b.real_wage_growth_pct > 0 ? '+' : ''}${b.real_wage_growth_pct.toFixed(1)}%` : '—'}</td>
+      <td style="padding:8px 10px;text-align:center;${b.revenue_risk === 'HIGH' || b.revenue_risk === 'CRITICAL' ? 'color:#c0392b;font-weight:700' : ''}">${b.revenue_risk}</td>
+      <td style="padding:8px 10px;font-size:9pt;color:#555">${b.analysis || ''}</td>
+    </tr>`).join('');
+
+  // ── Alternative sources ─────────────────────────────────────────────────────
+  const altSections = (plData?.material_alternatives || []).map(mat => {
+    const altRows = (mat.alternatives || []).map(a => `
+      <tr>
+        <td style="padding:6px 10px;text-align:center;font-weight:700;color:#1a3a8f">${a.rank}</td>
+        <td style="padding:6px 10px;font-weight:600">${a.country}</td>
+        <td style="padding:6px 10px;text-align:center;${a.risk_level === 'LOW' ? 'color:#27ae60' : a.risk_level === 'MEDIUM' ? 'color:#e67e22' : 'color:#c0392b'}">${a.risk_level}</td>
+        <td style="padding:6px 10px;text-align:center">${a.score}/100</td>
+        <td style="padding:6px 10px;text-align:center;${(a.estimated_cost_premium_pct || 0) < 0 ? 'color:#27ae60' : 'color:#c0392b'}">${a.estimated_cost_premium_pct > 0 ? '+' : ''}${a.estimated_cost_premium_pct?.toFixed(1)}%</td>
+        <td style="padding:6px 10px;text-align:center">${a.transition_time_months}mo</td>
+        <td style="padding:6px 10px;font-size:9pt;color:#555">${a.reasoning || ''}</td>
+      </tr>`).join('');
+    return `
+      <h3 style="font-size:11pt;color:#2c3e70;margin:18px 0 6px">${mat.material}</h3>
+      ${mat.risk_driver ? `<p style="font-size:9pt;color:#c0392b;margin:0 0 8px">⚠ Risk driver: ${mat.risk_driver}</p>` : ''}
+      <table style="width:100%;border-collapse:collapse;font-size:9.5pt">
+        <thead><tr style="background:#f0f4ff">
+          <th style="padding:6px 10px;text-align:center">Rank</th>
+          <th style="padding:6px 10px;text-align:left">Country</th>
+          <th style="padding:6px 10px;text-align:center">Risk</th>
+          <th style="padding:6px 10px;text-align:center">Score</th>
+          <th style="padding:6px 10px;text-align:center">Cost Δ</th>
+          <th style="padding:6px 10px;text-align:center">Transition</th>
+          <th style="padding:6px 10px;text-align:left">Reasoning</th>
+        </tr></thead>
+        <tbody>${altRows}</tbody>
+      </table>`;
+  }).join('');
+
+  // ── Recommendations ─────────────────────────────────────────────────────────
+  const recList = (plData?.key_recommendations || []).map((r, i) => `
+    <div style="margin:10px 0;padding:12px 14px;border-left:4px solid ${r.priority === 'URGENT' ? '#c0392b' : r.priority === 'HIGH' ? '#e67e22' : '#f39c12'};background:#fafafa;border-radius:0 6px 6px 0">
+      <div style="font-weight:700;font-size:10pt;color:${r.priority === 'URGENT' ? '#c0392b' : r.priority === 'HIGH' ? '#e67e22' : '#e67e22'}">${r.priority} — ${r.action}</div>
+      <div style="font-size:9pt;color:#555;margin-top:4px">${r.rationale}</div>
+      ${r.estimated_benefit ? `<div style="font-size:9pt;color:#27ae60;margin-top:4px">💡 ${r.estimated_benefit}</div>` : ''}
+    </div>`).join('');
+
+  // ── Materials input table ───────────────────────────────────────────────────
+  const matRows = (company.materials || []).map(m => {
+    const sources = (m.source_countries || []).map(s => `${s.country_name} (${s.supply_percentage}%)`).join(', ');
+    const monthly = (m.monthly_volume || 0) * (m.current_unit_cost || 0);
+    return `
+      <tr>
+        <td style="padding:6px 10px;font-weight:600">${m.name}</td>
+        <td style="padding:6px 10px;text-align:center">${m.monthly_volume?.toLocaleString()} ${m.unit}/mo</td>
+        <td style="padding:6px 10px;text-align:center">$${m.current_unit_cost?.toLocaleString()}/${m.unit}</td>
+        <td style="padding:6px 10px;text-align:right">$${monthly.toLocaleString()}/mo</td>
+        <td style="padding:6px 10px;font-size:9pt">${sources || 'N/A'}</td>
+      </tr>`;
+  }).join('');
+
+  const buyerSummary = (company.buyer_markets || []).map(b => `${b.country_name} (${b.percentage}%)`).join(', ') || 'N/A';
+
+  const riskColor = plData?.overall_risk === 'CRITICAL' ? '#c0392b' : plData?.overall_risk === 'HIGH' ? '#e67e22' : plData?.overall_risk === 'MEDIUM' ? '#f39c12' : '#27ae60';
+  const breachCount = (plData?.quarterly_forecast || []).filter(q => q.breach_tolerance).length;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Supply Chain Financial Analysis — ${company.name}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Georgia', serif; font-size: 10.5pt; color: #111; background: #fff; padding: 32px 48px; max-width: 960px; margin: 0 auto; }
+    h1 { font-size: 20pt; color: #1a1a2e; margin-bottom: 4px; }
+    h2 { font-size: 13pt; color: #1a1a2e; margin: 28px 0 8px; border-bottom: 2px solid #1a1a2e; padding-bottom: 4px; }
+    h3 { font-size: 11pt; color: #2c3e70; margin: 16px 0 6px; }
+    p { line-height: 1.65; margin: 6px 0; }
+    table { width: 100%; border-collapse: collapse; font-size: 9.5pt; margin: 8px 0; }
+    th { background: #1a1a2e; color: #fff; padding: 8px 10px; text-align: left; font-size: 9pt; letter-spacing: 0.03em; }
+    td { border-bottom: 1px solid #e8e8e8; vertical-align: top; }
+    tr:nth-child(even) td { background: #f9f9fb; }
+    .header { border-bottom: 3px solid #1a1a2e; padding-bottom: 14px; margin-bottom: 22px; }
+    .meta { font-size: 9pt; color: #555; margin-top: 6px; }
+    .tag { display: inline-block; background: #1a1a2e; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 8pt; margin-right: 6px; font-family: monospace; }
+    .kpi-row { display: flex; gap: 14px; margin: 14px 0; }
+    .kpi { flex: 1; border: 1px solid #ddd; border-radius: 6px; padding: 10px 14px; text-align: center; }
+    .kpi-val { font-size: 16pt; font-weight: bold; color: #1a1a2e; }
+    .kpi-lbl { font-size: 8pt; color: #666; margin-top: 2px; }
+    .risk-badge { display:inline-block;padding:4px 12px;border-radius:4px;font-weight:700;font-size:11pt;color:#fff;background:${riskColor} }
+    .exec-summary { background: #f0f4ff; border-left: 4px solid #1a3a8f; padding: 14px 18px; border-radius: 0 8px 8px 0; margin: 14px 0; }
+    .disclaimer { margin-top: 32px; padding: 10px 14px; background: #fafafa; border-left: 3px solid #aaa; font-size: 8.5pt; color: #666; line-height: 1.5; }
+    .footer { margin-top: 24px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 8pt; color: #888; display: flex; justify-content: space-between; }
+    .print-btn { display:block;margin:0 auto 24px;padding:10px 28px;background:#1a1a2e;color:#fff;border:none;border-radius:6px;font-size:11pt;cursor:pointer; }
+    .print-btn:hover { background:#2c3e70; }
+    .tolerance-note { font-size:9pt;color:#888;font-style:italic }
+    @media print { body { padding: 20px 30px; } .no-print { display:none; } }
+  </style>
+</head>
+<body>
+  <button class="print-btn no-print" onclick="window.print()">🖨 Download as PDF / Print</button>
+
+  <div class="header">
+    <div class="meta" style="margin-bottom:8px">
+      <span class="tag">SUPPLY CHAIN FINANCIAL ANALYSIS</span>
+      <span class="tag">CONFIDENTIAL — INTERNAL USE ONLY</span>
+    </div>
+    <h1>${company.name}</h1>
+    <div class="meta">
+      ${company.industry ? `<strong>Industry:</strong> ${company.industry} &nbsp;|&nbsp;` : ''}
+      ${company.final_product ? `<strong>Product:</strong> ${company.final_product} &nbsp;|&nbsp;` : ''}
+      ${company.manufacturing_country_name ? `<strong>Manufacturing:</strong> ${company.manufacturing_country_name} &nbsp;|&nbsp;` : ''}
+      <strong>Report Date:</strong> ${dateStr} &nbsp;|&nbsp;
+      <strong>Currency:</strong> ${company.base_currency || 'USD'}
+    </div>
+  </div>
+
+  <!-- Risk Overview -->
+  <div style="display:flex;align-items:center;gap:20px;margin-bottom:16px">
+    <div>
+      <div style="font-size:9pt;color:#888;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Overall Supply Chain Risk</div>
+      <span class="risk-badge">${plData?.overall_risk || 'UNKNOWN'} &nbsp; ${plData?.risk_score || '—'}/100</span>
+    </div>
+    ${breachCount > 0 ? `<div style="padding:8px 14px;background:#fff0f0;border:1px solid #e8a0a0;border-radius:6px;color:#c0392b;font-weight:600;font-size:10pt">⚠ ${breachCount} quarter${breachCount > 1 ? 's' : ''} breach your ${tolerance}% profit tolerance threshold</div>` : `<div style="padding:8px 14px;background:#f0fff4;border:1px solid #a0e8b0;border-radius:6px;color:#27ae60;font-size:10pt">✓ No tolerance breaches projected</div>`}
+  </div>
+
+  <!-- Executive Summary -->
+  <div class="exec-summary">
+    <strong style="font-size:10pt">Executive Summary</strong>
+    <p style="margin-top:8px">${plData?.executive_summary || 'Run P&L analysis to generate executive summary.'}</p>
+  </div>
+
+  <!-- P&L Baseline -->
+  <h2>1. P&L Baseline</h2>
+  <div class="kpi-row">
+    <div class="kpi"><div class="kpi-val">$${(rev / 1_000_000).toFixed(2)}M</div><div class="kpi-lbl">Annual Revenue</div></div>
+    <div class="kpi"><div class="kpi-val">${cogsPct}%</div><div class="kpi-lbl">COGS</div></div>
+    <div class="kpi"><div class="kpi-val">${grossPct}%</div><div class="kpi-lbl">Gross Margin</div></div>
+    <div class="kpi"><div class="kpi-val">${opexPct}%</div><div class="kpi-lbl">OpEx</div></div>
+    <div class="kpi" style="border-color:#1a3a8f"><div class="kpi-val" style="color:${netPct > 10 ? '#27ae60' : netPct > 0 ? '#e67e22' : '#c0392b'}">${netPct.toFixed(1)}%</div><div class="kpi-lbl">Net Profit Margin</div></div>
+  </div>
+  <p class="tolerance-note">Risk tolerance: flag quarters where net profit declines more than <strong>${tolerance}%</strong>.</p>
+
+  <!-- Input Materials -->
+  <h2>2. Raw Material Inputs</h2>
+  <table>
+    <thead><tr><th>Material</th><th style="text-align:center">Volume</th><th style="text-align:center">Unit Cost</th><th style="text-align:right">Monthly Spend</th><th>Source Countries</th></tr></thead>
+    <tbody>${matRows || '<tr><td colspan="5" style="padding:10px;color:#888">No materials configured</td></tr>'}</tbody>
+  </table>
+  <p style="font-size:9pt;color:#555;margin-top:6px"><strong>Buyer markets:</strong> ${buyerSummary}</p>
+
+  <!-- Quarterly P&L Forecast -->
+  <h2>3. Quarterly P&L Forecast — ${(plData?.quarters || []).join(', ')}</h2>
+  ${plData?.quarterly_forecast?.length ? `
+  <table>
+    <thead><tr>
+      <th>Quarter</th>
+      <th style="text-align:center">COGS Δ</th>
+      <th style="text-align:center">Gross Margin</th>
+      <th style="text-align:center">Net Profit Δ</th>
+      <th style="text-align:right">$ Impact</th>
+      <th>Key Drivers</th>
+    </tr></thead>
+    <tbody>${qRows}</tbody>
+  </table>
+  <p style="font-size:8.5pt;color:#888;margin-top:6px">⚠ BREACH = projected net profit decline exceeds ${tolerance}% tolerance threshold.</p>
+  ` : '<p style="color:#888;font-style:italic">Run P&L analysis to generate quarterly forecast.</p>'}
+
+  <!-- Inflation & Purchasing Power -->
+  ${(plData?.buyer_market_impact || []).length ? `
+  <h2>4. Buyer Market Purchasing Power & Inflation</h2>
+  <table>
+    <thead><tr>
+      <th>Market</th>
+      <th style="text-align:center">Share</th>
+      <th style="text-align:center">Inflation</th>
+      <th style="text-align:center">Real Wage Growth</th>
+      <th style="text-align:center">Revenue Risk</th>
+      <th>Analysis</th>
+    </tr></thead>
+    <tbody>${buyerRows}</tbody>
+  </table>` : ''}
+
+  <!-- Sensitivity Grid -->
+  ${(plData?.sensitivity_grid || []).length ? `
+  <h2>5. CFO Sensitivity Grid — Net Profit Impact %</h2>
+  <table>
+    <thead><tr>
+      <th>Scenario</th>
+      <th style="text-align:center">Cost Δ</th>
+      <th style="text-align:center">Likelihood</th>
+      ${(plData?.quarters || []).map(q => `<th style="text-align:center">${q}</th>`).join('')}
+      <th style="text-align:right">Annual Impact</th>
+    </tr></thead>
+    <tbody>${gridRows}</tbody>
+  </table>
+  <p style="font-size:8.5pt;color:#888;margin-top:6px">⚠ = quarter breaches ${tolerance}% tolerance. Red cells require immediate CFO attention.</p>
+  ` : ''}
+
+  <!-- Alternative Sources -->
+  ${(plData?.material_alternatives || []).length ? `
+  <h2>6. Alternative Commodity Sources — Ranked by Safety</h2>
+  ${altSections}
+  ` : ''}
+
+  <!-- Recommendations -->
+  ${(plData?.key_recommendations || []).length ? `
+  <h2>7. Priority Recommendations</h2>
+  ${recList}
+  ` : ''}
+
+  <div class="disclaimer">
+    <strong>Disclaimer:</strong> This report is AI-generated and intended for internal strategic planning purposes only. All projections, forecasts and risk scores are modelled estimates and should be independently verified before making financial, investment or procurement decisions. Geopolitical and macroeconomic conditions may change rapidly. The authors make no warranty as to the accuracy or completeness of this analysis.
+  </div>
+  <div class="footer">
+    <span>Global Conflict &amp; Market Intelligence Platform — Supply Chain Intelligence</span>
+    <span>Generated ${dateStr}</span>
+  </div>
+</body>
+</html>`;
+}
+
+function FullReportPanel({ companyId, company }) {
+  const [generating, setGenerating] = useState(false);
+
+  const { data: plData, isLoading: plLoading } = useQuery({
+    queryKey: ['pl-analysis', companyId],
+    queryFn: () => fetch(`${API}/supply-chain/companies/${companyId}/pl-analysis`).then(r => r.json()),
+    staleTime: 30 * 60_000,
+    enabled: !!companyId,
+    retry: false,
+  });
+
+  const hasPL = !!plData && !plLoading;
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    try {
+      let data = plData;
+      if (!data) {
+        const r = await fetch(`${API}/supply-chain/companies/${companyId}/pl-analysis`);
+        data = await r.json();
+      }
+      const html = buildReportHTML(company, data);
+      const win = window.open('', '_blank');
+      win.document.write(html);
+      win.document.close();
+    } catch (e) {
+      alert('Failed to generate report: ' + e.message);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const sections = [
+    { icon: '📋', title: 'P&L Baseline', desc: 'Revenue, COGS, gross margin, and net profit baseline with tolerance threshold' },
+    { icon: '📦', title: 'Raw Material Inputs', desc: 'All commodities, volumes, unit costs, monthly spend, and source countries' },
+    { icon: '📅', title: 'Quarterly P&L Forecast', desc: '4-quarter AI projection with COGS impact, margin changes, and breach flags' },
+    { icon: '🌍', title: 'Buyer Market Analysis', desc: 'Purchasing power, inflation, real wage growth, and demand risk per market' },
+    { icon: '🎯', title: 'CFO Sensitivity Grid', desc: 'Full scenario table (Stress → Recovery) with per-quarter net profit % impact' },
+    { icon: '⇄', title: 'Alternative Sources', desc: 'Ranked safer commodity suppliers with cost premium, transition time, reasoning' },
+    { icon: '⚡', title: 'Priority Recommendations', desc: 'Urgent, High, and Medium CFO action items with estimated financial benefit' },
+  ];
+
+  const pnl = company?.pnl || {};
+  const hasFinancials = (pnl.annual_revenue || 0) > 0;
+
   return (
-    <div className="flex flex-col items-center">
-      <div className="relative w-28 h-14 overflow-hidden">
-        <svg viewBox="0 0 100 50" className="w-full h-full">
-          <path d="M5 50 A45 45 0 0 1 95 50" fill="none" stroke="#1e293b" strokeWidth="8" strokeLinecap="round" />
-          <path d="M5 50 A45 45 0 0 1 95 50" fill="none" stroke={color} strokeWidth="8" strokeLinecap="round"
-            strokeDasharray={`${(score / 100) * 141} 141`} opacity="0.85" />
-          <g transform={`rotate(${angle}, 50, 50)`}>
-            <line x1="50" y1="50" x2="50" y2="13" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
-            <circle cx="50" cy="50" r="3" fill="white" />
-          </g>
-        </svg>
+    <div className="space-y-6">
+      {/* Report overview card */}
+      <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="px-6 py-5 border-b border-border">
+          <h3 className="text-white font-bold text-base mb-1">Full Supply Chain Financial Analysis Report</h3>
+          <p className="text-xs text-gray-400">
+            A comprehensive, print-ready PDF combining all AI analysis, P&L modelling, sensitivity scenarios, and procurement recommendations.
+          </p>
+        </div>
+
+        {/* Section list */}
+        <div className="divide-y divide-border">
+          {sections.map((s, i) => (
+            <div key={i} className="flex items-start gap-4 px-6 py-3.5">
+              <span className="text-lg shrink-0 mt-0.5">{s.icon}</span>
+              <div>
+                <div className="text-sm font-semibold text-white">{s.title}</div>
+                <div className="text-xs text-gray-500 mt-0.5">{s.desc}</div>
+              </div>
+              <div className="ml-auto shrink-0 text-[10px] text-green-500 font-medium mt-1">✓ Included</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Status + generate button */}
+        <div className="px-6 py-5 border-t border-border bg-card/40 space-y-3">
+          {/* Data readiness */}
+          <div className="flex items-center gap-6 text-xs">
+            <div className="flex items-center gap-1.5">
+              <div className={`w-2 h-2 rounded-full ${hasFinancials ? 'bg-green-500' : 'bg-red-500'}`} />
+              <span className={hasFinancials ? 'text-green-400' : 'text-red-400'}>
+                {hasFinancials ? 'P&L data ready' : 'No P&L data — edit setup'}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className={`w-2 h-2 rounded-full ${(company?.buyer_markets || []).length > 0 ? 'bg-green-500' : 'bg-amber-500'}`} />
+              <span className={(company?.buyer_markets || []).length > 0 ? 'text-green-400' : 'text-amber-400'}>
+                {(company?.buyer_markets || []).length > 0 ? 'Buyer markets set' : 'No buyer markets'}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className={`w-2 h-2 rounded-full ${hasPL ? 'bg-green-500' : 'bg-amber-500'}`} />
+              <span className={hasPL ? 'text-green-400' : 'text-amber-400'}>
+                {hasPL ? 'AI analysis ready' : plLoading ? 'Generating AI analysis…' : 'AI analysis not yet run'}
+              </span>
+            </div>
+          </div>
+
+          {!hasFinancials && (
+            <div className="text-xs text-amber-400 bg-amber-900/20 border border-amber-800 rounded-lg px-3 py-2">
+              ⚠ Add your P&L financials in the setup wizard (Edit) to enable full forecasting in the report.
+            </div>
+          )}
+
+          <button
+            onClick={handleGenerate}
+            disabled={generating || plLoading}
+            className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-sm rounded-xl transition-colors flex items-center justify-center gap-2"
+          >
+            {generating || plLoading ? (
+              <>
+                <span className="animate-spin">⟳</span>
+                {plLoading ? 'Generating AI analysis first…' : 'Building report…'}
+              </>
+            ) : (
+              <>
+                <span>📄</span>
+                Generate & Download Full Report
+              </>
+            )}
+          </button>
+          <p className="text-[10px] text-gray-600 text-center">
+            Opens a print-ready page — use browser Print → Save as PDF to download.
+            {hasPL && plData?.generated_at && (
+              <span className="ml-1 text-gray-600">Analysis from {new Date(plData.generated_at).toLocaleTimeString()}.</span>
+            )}
+          </p>
+        </div>
       </div>
-      <div className={`text-lg font-bold -mt-1 ${RISK_COLORS[level]?.text || 'text-gray-400'}`}>{level}</div>
     </div>
   );
 }
 
-function KPICard({ label, value, sub, color = 'text-white' }) {
-  return (
-    <div className="bg-surface border border-border rounded-xl p-4 text-center">
-      <div className={`text-xl font-bold ${color} mb-0.5`}>{value}</div>
-      <div className="text-[10px] text-gray-500 uppercase tracking-wider">{label}</div>
-      {sub && <div className="text-[10px] text-gray-600 mt-0.5">{sub}</div>}
-    </div>
-  );
-}
-
-async function fetchImpact(companyId, narrative) {
-  const url = `${API}/supply-chain/companies/${companyId}/impact${narrative ? '?narrative=true' : ''}`;
-  const res = await fetch(url);
+// ── Main dashboard ────────────────────────────────────────────────────────────
+async function fetchImpact(companyId) {
+  const res = await fetch(`${API}/supply-chain/companies/${companyId}/impact`);
   if (!res.ok) throw new Error('Impact fetch failed');
   return res.json();
 }
 
-async function fetchNarrative(companyId) {
-  const res = await fetch(`${API}/supply-chain/companies/${companyId}/impact?narrative=true&refresh=true`);
-  if (!res.ok) throw new Error('Narrative failed');
-  const d = await res.json();
-  return d.narrative;
-}
-
 export default function CostImpactDashboard({ companyId, company, onEdit }) {
   const [mainTab, setMainTab] = useState('forecast');
-  const [sortBy, setSortBy] = useState('annual_cost_increase');
-  const [sortDir, setSortDir] = useState('desc');
-  const [filterRisk, setFilterRisk] = useState('ALL');
-  const [narrative, setNarrative] = useState('');
-  const [narrativeLoading, setNarrativeLoading] = useState(false);
-  const [narrativeError, setNarrativeError] = useState('');
 
-  const { data: impact, isLoading, isError, refetch, isFetching } = useQuery({
+  const { data: impact, isLoading, isError, refetch } = useQuery({
     queryKey: ['supply-impact', companyId],
-    queryFn: () => fetchImpact(companyId, false),
+    queryFn: () => fetchImpact(companyId),
     staleTime: 5 * 60_000,
     enabled: !!companyId,
   });
 
-  const loadNarrative = async () => {
-    setNarrativeLoading(true);
-    setNarrativeError('');
-    try {
-      const text = await fetchNarrative(companyId);
-      setNarrative(text);
-    } catch (e) {
-      setNarrativeError(e.message);
-    } finally {
-      setNarrativeLoading(false);
-    }
-  };
-
   if (isLoading) return (
-    <div className="flex items-center justify-center h-full">
+    <div className="flex items-center justify-center h-full w-full">
       <div className="text-center">
         <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-        <p className="text-sm text-gray-500">Calculating impact across {company?.materials?.length || 0} materials…</p>
+        <p className="text-sm text-gray-500">Loading supply chain data…</p>
       </div>
     </div>
   );
 
   if (isError) return (
-    <div className="flex items-center justify-center h-full">
-      <div className="text-center text-red-400 text-sm">Failed to load impact data. <button onClick={refetch} className="underline">Retry</button></div>
+    <div className="flex items-center justify-center h-full w-full">
+      <div className="text-center text-red-400 text-sm">
+        Failed to load. <button onClick={refetch} className="underline">Retry</button>
+      </div>
     </div>
   );
 
   if (!impact) return null;
 
-  // Sort and filter materials
-  let materials = [...(impact.materials || [])];
-  if (filterRisk !== 'ALL') materials = materials.filter(m => m.risk_level === filterRisk);
-  materials.sort((a, b) => {
-    const va = a[sortBy] ?? 0, vb = b[sortBy] ?? 0;
-    return sortDir === 'desc' ? vb - va : va - vb;
-  });
-
-  const rlevel = impact.overall_risk_level || 'LOW';
-  const rColors = RISK_COLORS[rlevel] || RISK_COLORS.LOW;
-
-  // Bar chart data
-  const barData = (impact.materials || [])
-    .filter(m => m.annual_cost_increase !== 0)
-    .sort((a, b) => Math.abs(b.annual_cost_increase) - Math.abs(a.annual_cost_increase))
-    .slice(0, 8)
-    .map(m => ({
-      name: m.material_name.slice(0, 10),
-      value: Math.round(m.annual_cost_increase),
-      risk: m.risk_level,
-    }));
-
-  const sortHeader = (key) => {
-    if (sortBy === key) setSortDir(d => d === 'desc' ? 'asc' : 'desc');
-    else { setSortBy(key); setSortDir('desc'); }
-  };
-
   return (
-    <div className="flex flex-col h-full overflow-y-auto">
+    <div className="flex flex-col h-full overflow-y-auto w-full">
       <div className="max-w-5xl mx-auto w-full p-5 space-y-5">
         {/* Header */}
-        <div className="flex items-start justify-between">
+        <div className="flex items-start justify-between flex-wrap gap-3">
           <div>
             <h2 className="text-white font-bold text-lg">{company?.name || impact.company_name}</h2>
             <p className="text-xs text-gray-500">
@@ -158,9 +465,9 @@ export default function CostImpactDashboard({ companyId, company, onEdit }) {
           <div className="flex gap-2 flex-wrap">
             <div className="flex bg-surface border border-border rounded-lg overflow-hidden text-xs font-medium">
               {[
-                { id: 'forecast',     label: '📈 P&L Forecast' },
-                { id: 'sensitivity',  label: '🎯 Sensitivity Grid' },
-                { id: 'impact',       label: '📊 Cost Impact' },
+                { id: 'forecast',    label: '📈 P&L Forecast' },
+                { id: 'sensitivity', label: '🎯 Sensitivity Grid' },
+                { id: 'impact',      label: '📄 Full Report' },
               ].map(t => (
                 <button key={t.id} onClick={() => setMainTab(t.id)}
                   className={`px-3 py-1.5 transition-colors ${mainTab === t.id ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-300'}`}>
@@ -168,177 +475,16 @@ export default function CostImpactDashboard({ companyId, company, onEdit }) {
                 </button>
               ))}
             </div>
-            <button onClick={onEdit} className="text-xs px-3 py-1.5 border border-border text-gray-500 hover:text-gray-300 rounded-lg transition-colors">
+            <button onClick={onEdit}
+              className="text-xs px-3 py-1.5 border border-border text-gray-500 hover:text-gray-300 rounded-lg transition-colors">
               ✏ Edit
             </button>
           </div>
         </div>
 
-        {/* P&L Forecast tab */}
-        {mainTab === 'forecast' && (
-          <PLForecastPanel companyId={companyId} company={company} />
-        )}
-
-        {/* Sensitivity grid + alternatives tab */}
-        {mainTab === 'sensitivity' && (
-          <SensitivityGrid companyId={companyId} company={company} />
-        )}
-
-        {/* Cost Impact tab content */}
-        {mainTab === 'impact' && <>
-
-        {/* Top section: gauge + KPIs + exposure */}
-        <div className="grid grid-cols-4 gap-4">
-          {/* Annual exposure — spans 1 col */}
-          <div className={`col-span-1 border rounded-xl p-4 flex flex-col items-center justify-center text-center ${rColors.border} ${rColors.bg}`}>
-            <div className={`text-2xl font-bold ${rColors.text} mb-1`}>{fmt(impact.total_annual_increase)}</div>
-            <div className="text-[10px] text-gray-400 uppercase tracking-wider">Additional annual cost</div>
-            <div className={`text-xs font-medium mt-1 ${rColors.text}`}>
-              +{impact.increase_pct?.toFixed(1)}% above baseline
-            </div>
-          </div>
-
-          {/* Risk gauge */}
-          <div className="col-span-1 bg-surface border border-border rounded-xl p-4 flex flex-col items-center justify-center">
-            <RiskGauge level={rlevel} />
-            <div className="text-[10px] text-gray-500 mt-1">Overall Risk</div>
-          </div>
-
-          {/* KPIs */}
-          <div className="col-span-2 grid grid-cols-2 gap-3">
-            <KPICard
-              label="Monthly baseline"
-              value={fmt(impact.total_monthly_baseline)}
-              sub={`${impact.materials?.length || 0} materials`}
-            />
-            <KPICard
-              label="Monthly increase"
-              value={`+${fmt(impact.total_monthly_increase)}`}
-              sub={`+${impact.increase_pct?.toFixed(1)}%`}
-              color={impact.total_monthly_increase > 0 ? 'text-red-400' : 'text-green-400'}
-            />
-            {impact.most_at_risk_material && (
-              <KPICard
-                label="Most at risk"
-                value={impact.most_at_risk_material.material_name}
-                sub={impact.most_at_risk_material.risk_level}
-                color={RISK_COLORS[impact.most_at_risk_material.risk_level]?.text || 'text-gray-300'}
-              />
-            )}
-            {impact.most_at_risk_country && (
-              <KPICard
-                label="Riskiest source"
-                value={impact.most_at_risk_country.country_name || impact.most_at_risk_country.iso3}
-                sub={`Risk score: ${impact.most_at_risk_country.risk_score}`}
-                color="text-orange-400"
-              />
-            )}
-          </div>
-        </div>
-
-        {/* Bar chart */}
-        {barData.length > 0 && (
-          <div className="bg-surface border border-border rounded-xl p-4">
-            <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-3">Annual Cost Impact by Material</div>
-            <ResponsiveContainer width="100%" height={160}>
-              <BarChart data={barData} margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
-                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-                <YAxis tickFormatter={v => `$${Math.abs(v) >= 1000 ? (v/1000).toFixed(0)+'K' : v}`} tick={{ fontSize: 10, fill: '#6b7280' }} axisLine={false} tickLine={false} width={55} />
-                <Tooltip
-                  formatter={v => [fmt(v), 'Annual impact']}
-                  contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 }}
-                />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                  {barData.map((d, i) => <Cell key={i} fill={RISK_COLORS[d.risk]?.bar || '#3b82f6'} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-
-        {/* Material breakdown */}
-        <div className="bg-surface border border-border rounded-xl overflow-hidden">
-          {/* Table controls */}
-          <div className="px-4 py-2.5 border-b border-border flex items-center gap-3 flex-wrap">
-            <span className="text-[10px] text-gray-500 uppercase tracking-wider font-bold">Material Breakdown</span>
-            <div className="flex gap-1 ml-auto">
-              {['ALL', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map(r => (
-                <button
-                  key={r}
-                  onClick={() => setFilterRisk(r)}
-                  className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
-                    filterRisk === r
-                      ? r === 'ALL' ? 'bg-blue-700 border-blue-500 text-white' : `${RISK_COLORS[r]?.bg} ${RISK_COLORS[r]?.border} ${RISK_COLORS[r]?.text}`
-                      : 'border-border text-gray-600 hover:text-gray-400'
-                  }`}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Column headers */}
-          <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-4 py-2 text-[10px] text-gray-500 uppercase tracking-wider border-b border-border">
-            <button onClick={() => sortHeader('material_name')} className="text-left hover:text-gray-300">
-              Material {sortBy === 'material_name' ? (sortDir === 'desc' ? '↓' : '↑') : ''}
-            </button>
-            <button onClick={() => sortHeader('baseline_monthly_cost')} className="w-28 text-right hover:text-gray-300">
-              Baseline {sortBy === 'baseline_monthly_cost' ? (sortDir === 'desc' ? '↓' : '↑') : ''}
-            </button>
-            <button onClick={() => sortHeader('effective_price_impact_pct')} className="w-20 text-right hover:text-gray-300">
-              Price Δ {sortBy === 'effective_price_impact_pct' ? (sortDir === 'desc' ? '↓' : '↑') : ''}
-            </button>
-            <button onClick={() => sortHeader('annual_cost_increase')} className="w-28 text-right hover:text-gray-300">
-              Annual +Cost {sortBy === 'annual_cost_increase' ? (sortDir === 'desc' ? '↓' : '↑') : ''}
-            </button>
-            <div className="w-8" />
-          </div>
-
-          {/* Material rows */}
-          <div className="divide-y divide-border">
-            {materials.length === 0 ? (
-              <p className="text-xs text-gray-500 p-4 text-center">No materials match filter.</p>
-            ) : materials.map((m, i) => (
-              <MaterialImpactCard key={m.material_id || i} impact={m} />
-            ))}
-          </div>
-        </div>
-
-        {/* AI Narrative */}
-        <div className="bg-surface border border-border rounded-xl p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-[10px] text-gray-500 uppercase tracking-wider font-bold">Executive Summary</div>
-            <div className="flex items-center gap-2">
-              {impact.calculated_at && (
-                <span className="text-[10px] text-gray-600">
-                  Updated {new Date(impact.calculated_at).toLocaleTimeString()}
-                </span>
-              )}
-              <button
-                onClick={loadNarrative}
-                disabled={narrativeLoading}
-                className="text-xs px-3 py-1.5 bg-blue-900/30 border border-blue-800 text-blue-300 hover:text-blue-200 rounded-lg transition-colors disabled:opacity-50"
-              >
-                {narrativeLoading ? '⟳ Generating…' : narrative ? '↻ Regenerate' : '✦ Generate AI Summary'}
-              </button>
-            </div>
-          </div>
-
-          {narrativeError && (
-            <p className="text-xs text-red-400 mb-2">{narrativeError}</p>
-          )}
-
-          {narrative ? (
-            <p className="text-sm text-gray-300 leading-relaxed">{narrative}</p>
-          ) : !narrativeLoading && (
-            <p className="text-xs text-gray-600 italic">
-              Click "Generate AI Summary" for a CFO-level executive summary with specific financial exposure and recommended actions.
-            </p>
-          )}
-        </div>
-
-        </> /* end mainTab === 'impact' */}
+        {mainTab === 'forecast' && <PLForecastPanel companyId={companyId} company={company} />}
+        {mainTab === 'sensitivity' && <SensitivityGrid companyId={companyId} company={company} />}
+        {mainTab === 'impact' && <FullReportPanel companyId={companyId} company={company} />}
       </div>
     </div>
   );
