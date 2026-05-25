@@ -79,13 +79,13 @@ function AuthenticatedApp({ user, logout }) {
     <div className="flex flex-col h-screen bg-surface text-gray-200 overflow-hidden">
       {/* Header */}
       <header className="bg-card border-b border-border px-3 md:px-4 py-2 md:py-2.5 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
+        <button onClick={() => setView('dashboard')} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
           <div className="w-2 h-2 rounded-full bg-accent-red animate-pulse shrink-0" />
-          <div className="flex flex-col leading-tight">
+          <div className="flex flex-col leading-tight text-left">
             <span className="text-white font-bold text-sm md:text-lg tracking-widest">Zer0</span>
             <span className="text-gray-500 text-[9px] md:text-[10px] tracking-widest uppercase hidden sm:block">Global Conflict &amp; Market Intelligence</span>
           </div>
-        </div>
+        </button>
 
         <div className="flex items-center gap-2 md:gap-4">
           {/* Stats — hidden on smallest screens */}
