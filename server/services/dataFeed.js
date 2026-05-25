@@ -173,76 +173,117 @@ const COINGECKO_IDS = {
   'DOGE-USD': 'dogecoin', 'AVAX-USD': 'avalanche-2',
 };
 
-// Fetch one symbol from Stooq using the HISTORICAL endpoint (/q/d/l/)
-// This returns last N trading days as CSV — immune to N/D during off-hours
-// CSV format: Date,Open,High,Low,Close,Volume  (no Symbol column, newest row last)
+// Parse Stooq spot-price CSV (format: sd2t2ohlcv)
+// Returns null if data is N/D or malformed
+function parseStooqSpot(yahooSymbol, csvText) {
+  const lines = csvText.trim().split('\n');
+  if (lines.length < 2) return null;
+  const cols = lines[1].split(',');
+  if (cols.length < 7) return null;
+  const close = cols[6]?.trim();
+  const open  = cols[3]?.trim();
+  if (!close || close === 'N/D') return null;
+  const closeNum = parseFloat(close);
+  const openNum  = parseFloat(open) || closeNum;
+  if (isNaN(closeNum) || closeNum === 0) return null;
+
+  // Use open as same-day baseline for changePct
+  const changePct = openNum && openNum !== closeNum ? ((closeNum - openNum) / openNum) * 100 : 0;
+  return { closeNum, openNum, changePct };
+}
+
+// Parse Stooq daily-history CSV (format: Date,Open,High,Low,Close,Volume)
+// Returns null if data is malformed; derives prev-close from penultimate row
+function parseStooqHistory(yahooSymbol, csvText) {
+  const lines = csvText.trim().split('\n').filter(l => l.trim());
+  if (lines.length < 2) return null;
+  const last = lines[lines.length - 1].split(',');
+  if (last.length < 5) return null;
+  const closeNum = parseFloat(last[4]);
+  if (isNaN(closeNum) || closeNum === 0) return null;
+  let prevClose = null;
+  if (lines.length >= 3) {
+    const prev = lines[lines.length - 2].split(',');
+    if (prev.length >= 5) prevClose = parseFloat(prev[4]) || null;
+  }
+  const changePct = prevClose ? ((closeNum - prevClose) / prevClose) * 100 : 0;
+  return { closeNum, changePct, prevClose };
+}
+
+// Fetch one symbol from Stooq:
+//   1. Try spot-price URL (real-time, fast)
+//   2. If N/D or blocked → try historical URL (always has last close)
+//   3. Either way → fall back to per-symbol cache if both fail
 async function fetchStooqOne(yahooSymbol, attempt = 0) {
   const stooqSym = STOOQ_MAP[yahooSymbol];
   if (!stooqSym) return null;
-  try {
-    const { data } = await axios.get(
-      `https://stooq.com/q/d/l/?s=${stooqSym}&i=d`,
-      {
-        timeout: 12000,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
-          'Accept': 'text/csv, text/plain, */*',
-          'Referer': 'https://stooq.com/',
-        },
-      }
-    );
 
-    // Guard: Stooq sometimes returns an HTML error page
-    if (typeof data !== 'string' || data.trimStart().startsWith('<')) {
-      if (attempt === 0) {
-        await new Promise(r => setTimeout(r, 1500));
-        return fetchStooqOne(yahooSymbol, 1);
-      }
-      return null;
-    }
+  const perSymKey = `stooq_sym_${yahooSymbol}`;
+  const cached    = cache.get(perSymKey); // long-lived per-symbol fallback
 
-    const lines = data.trim().split('\n').filter(l => l.trim());
-    // Need header + at least 2 data rows for prev-close calculation
-    if (lines.length < 2) {
-      if (attempt === 0) {
-        await new Promise(r => setTimeout(r, 1500));
-        return fetchStooqOne(yahooSymbol, 1);
-      }
-      return null;
-    }
+  const HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+    'Accept': 'text/csv, text/plain, */*',
+    'Referer': 'https://stooq.com/',
+  };
 
-    // Last row = most recent trading day
-    const lastCols = lines[lines.length - 1].split(',');
-    if (lastCols.length < 5) return null;
-
-    const closeNum = parseFloat(lastCols[4]);
-    if (isNaN(closeNum) || closeNum === 0) return null;
-
-    // Previous trading day close for daily % change
-    let prevClose = null;
-    if (lines.length >= 3) {
-      const prevCols = lines[lines.length - 2].split(',');
-      if (prevCols.length >= 5) prevClose = parseFloat(prevCols[4]) || null;
-    }
-
-    const changePct = prevClose ? ((closeNum - prevClose) / prevClose) * 100 : 0;
-
-    return {
+  const makeResult = (closeNum, changePct) => {
+    const result = {
       symbol: yahooSymbol,
       name: COMMODITY_SYMBOLS[yahooSymbol] || yahooSymbol,
       price: closeNum,
-      change: prevClose ? closeNum - prevClose : 0,
+      change: 0,
       changePct,
       type: 'commodity',
       sparkline: [],
     };
+    cache.set(perSymKey, result, 86400 * 3); // keep 3 days as fallback
+    return result;
+  };
+
+  try {
+    // ── Attempt 1: spot price (real-time) ──
+    const spotResp = await axios.get(
+      `https://stooq.com/q/l/?s=${stooqSym}&f=sd2t2ohlcv&h&e=csv`,
+      { timeout: 10000, headers: HEADERS }
+    ).catch(() => null);
+
+    if (spotResp?.data && typeof spotResp.data === 'string' && !spotResp.data.trimStart().startsWith('<')) {
+      const parsed = parseStooqSpot(yahooSymbol, spotResp.data);
+      if (parsed) return makeResult(parsed.closeNum, parsed.changePct);
+    }
+
+    // ── Attempt 2: historical daily (immune to N/D / off-hours) ──
+    const histResp = await axios.get(
+      `https://stooq.com/q/d/l/?s=${stooqSym}&i=d`,
+      { timeout: 12000, headers: HEADERS }
+    ).catch(() => null);
+
+    if (histResp?.data && typeof histResp.data === 'string' && !histResp.data.trimStart().startsWith('<')) {
+      const parsed = parseStooqHistory(yahooSymbol, histResp.data);
+      if (parsed) return makeResult(parsed.closeNum, parsed.changePct);
+    }
+
+    // ── Attempt 3: retry once after a pause ──
+    if (attempt === 0) {
+      await new Promise(r => setTimeout(r, 2000));
+      return fetchStooqOne(yahooSymbol, 1);
+    }
+
+    // ── Final fallback: stale per-symbol cache ──
+    if (cached) {
+      console.warn(`[dataFeed] Stooq failed for ${stooqSym} — using stale cache`);
+      return cached;
+    }
+
+    return null;
   } catch (err) {
     if (attempt === 0) {
       await new Promise(r => setTimeout(r, 2000));
       return fetchStooqOne(yahooSymbol, 1);
     }
-    console.warn(`[dataFeed] Stooq failed for ${stooqSym}:`, err.message);
-    return null;
+    console.warn(`[dataFeed] Stooq error for ${stooqSym}:`, err.message);
+    return cached || null;
   }
 }
 
