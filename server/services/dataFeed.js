@@ -173,82 +173,72 @@ const COINGECKO_IDS = {
   'DOGE-USD': 'dogecoin', 'AVAX-USD': 'avalanche-2',
 };
 
-// Parse a single Stooq CSV row → price data object
-function parseStooqRow(yahooSymbol, csvText) {
-  const lines = csvText.trim().split('\n');
-  if (lines.length < 2) return null;
-  // Validate header row exists (should start with "Symbol" or similar)
-  const headerCols = lines[0].split(',').length;
-  if (headerCols < 6) return null; // not a valid CSV
-  const cols = lines[1].split(',');
-  if (cols.length < 7) return null;
-  const [, date, , open, , , close] = cols;
-  if (!close || close.trim() === 'N/D' || !date || date.trim() === 'N/D') return null;
-
-  const closeNum = parseFloat(close);
-  const openNum  = parseFloat(open) || closeNum;
-  if (isNaN(closeNum) || closeNum === 0) return null;
-
-  // Daily % change: compare against cached previous close; fall back to open vs close
-  const prevKey  = `stooq_prev_${yahooSymbol}`;
-  const dateKey  = `stooq_date_${yahooSymbol}`;
-  const cachedDate = cache.get(dateKey);
-  let prevClose = cache.get(prevKey);
-
-  if (cachedDate && cachedDate !== date) {
-    // New trading day — roll yesterday's close
-    cache.set(prevKey, prevClose, 86400);
-    cache.set(dateKey, date, 86400);
-  } else if (!cachedDate) {
-    // First time seen — use open as proxy for previous close
-    cache.set(prevKey, openNum, 86400);
-    cache.set(dateKey, date, 86400);
-    prevClose = openNum;
-  }
-
-  const changePct = prevClose ? ((closeNum - prevClose) / prevClose) * 100 : 0;
-
-  return {
-    symbol: yahooSymbol,
-    name: COMMODITY_SYMBOLS[yahooSymbol] || yahooSymbol,
-    price: closeNum,
-    change: prevClose ? closeNum - prevClose : 0,
-    changePct,
-    type: 'commodity',
-    sparkline: [],
-  };
-}
-
-// Fetch one symbol from Stooq (with retry and HTML-response guard)
+// Fetch one symbol from Stooq using the HISTORICAL endpoint (/q/d/l/)
+// This returns last N trading days as CSV — immune to N/D during off-hours
+// CSV format: Date,Open,High,Low,Close,Volume  (no Symbol column, newest row last)
 async function fetchStooqOne(yahooSymbol, attempt = 0) {
   const stooqSym = STOOQ_MAP[yahooSymbol];
   if (!stooqSym) return null;
   try {
     const { data } = await axios.get(
-      `https://stooq.com/q/l/?s=${stooqSym}&f=sd2t2ohlcv&h&e=csv`,
+      `https://stooq.com/q/d/l/?s=${stooqSym}&i=d`,
       {
-        timeout: 10000,
+        timeout: 12000,
         headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; MarketDataBot/1.0)',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
           'Accept': 'text/csv, text/plain, */*',
+          'Referer': 'https://stooq.com/',
         },
       }
     );
-    // Stooq sometimes returns an HTML error page instead of CSV — detect and skip
+
+    // Guard: Stooq sometimes returns an HTML error page
     if (typeof data !== 'string' || data.trimStart().startsWith('<')) {
-      console.warn(`[dataFeed] Stooq returned HTML for ${stooqSym} — skipping`);
+      if (attempt === 0) {
+        await new Promise(r => setTimeout(r, 1500));
+        return fetchStooqOne(yahooSymbol, 1);
+      }
       return null;
     }
-    const result = parseStooqRow(yahooSymbol, data);
-    if (!result && attempt === 0) {
-      // One retry after 1 second
-      await new Promise(r => setTimeout(r, 1000));
-      return fetchStooqOne(yahooSymbol, 1);
+
+    const lines = data.trim().split('\n').filter(l => l.trim());
+    // Need header + at least 2 data rows for prev-close calculation
+    if (lines.length < 2) {
+      if (attempt === 0) {
+        await new Promise(r => setTimeout(r, 1500));
+        return fetchStooqOne(yahooSymbol, 1);
+      }
+      return null;
     }
-    return result;
+
+    // Last row = most recent trading day
+    const lastCols = lines[lines.length - 1].split(',');
+    if (lastCols.length < 5) return null;
+
+    const closeNum = parseFloat(lastCols[4]);
+    if (isNaN(closeNum) || closeNum === 0) return null;
+
+    // Previous trading day close for daily % change
+    let prevClose = null;
+    if (lines.length >= 3) {
+      const prevCols = lines[lines.length - 2].split(',');
+      if (prevCols.length >= 5) prevClose = parseFloat(prevCols[4]) || null;
+    }
+
+    const changePct = prevClose ? ((closeNum - prevClose) / prevClose) * 100 : 0;
+
+    return {
+      symbol: yahooSymbol,
+      name: COMMODITY_SYMBOLS[yahooSymbol] || yahooSymbol,
+      price: closeNum,
+      change: prevClose ? closeNum - prevClose : 0,
+      changePct,
+      type: 'commodity',
+      sparkline: [],
+    };
   } catch (err) {
     if (attempt === 0) {
-      await new Promise(r => setTimeout(r, 1500));
+      await new Promise(r => setTimeout(r, 2000));
       return fetchStooqOne(yahooSymbol, 1);
     }
     console.warn(`[dataFeed] Stooq failed for ${stooqSym}:`, err.message);
