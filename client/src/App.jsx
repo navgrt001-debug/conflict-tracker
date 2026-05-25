@@ -9,6 +9,8 @@ import PredictionPanel from './components/panels/PredictionPanel';
 import FloatingChat from './components/FloatingChat';
 import Dashboard from './components/Dashboard';
 import SupplyChainView from './components/SupplyChain/SupplyChainView';
+import LoginPage from './components/Auth/LoginPage';
+import { useAuth } from './context/AuthContext';
 import useSession from './hooks/useSession';
 
 const DETAIL_TABS = [
@@ -25,11 +27,32 @@ const MAIN_VIEWS = [
 ];
 
 export default function App() {
+  const { user, loading: authLoading, logout } = useAuth();
+
+  // Show a full-screen spinner while we verify the stored token
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-surface text-gray-500">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <div className="text-sm tracking-wide">Authenticating…</div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show login / register page if not authenticated
+  if (!user) return <LoginPage />;
+
+  return <AuthenticatedApp user={user} logout={logout} />;
+}
+
+function AuthenticatedApp({ user, logout }) {
   const [conflicts, setConflicts] = useState([]);
   const [selected, setSelected] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [view, setView] = useState('dashboard');
-const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
 
   // mobile detail sub-view: 'list' | 'map' | 'panel'
   const [mobileDetailView, setMobileDetailView] = useState('list');
@@ -58,10 +81,10 @@ const [loading, setLoading] = useState(true);
       <header className="bg-card border-b border-border px-3 md:px-4 py-2 md:py-2.5 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-accent-red animate-pulse shrink-0" />
-          <h1 className="text-white font-bold text-xs md:text-base tracking-wide">
-            <span className="hidden sm:inline">GLOBAL CONFLICT & MARKET INTELLIGENCE</span>
-            <span className="sm:hidden">GCMI</span>
-          </h1>
+          <div className="flex flex-col leading-tight">
+            <span className="text-white font-bold text-sm md:text-lg tracking-widest">Zer0</span>
+            <span className="text-gray-500 text-[9px] md:text-[10px] tracking-widest uppercase hidden sm:block">Global Conflict &amp; Market Intelligence</span>
+          </div>
         </div>
 
         <div className="flex items-center gap-2 md:gap-4">
@@ -90,6 +113,29 @@ const [loading, setLoading] = useState(true);
 
           <div className="hidden lg:block text-gray-600 font-mono text-[10px]">
             {new Date().toUTCString().slice(0, 22)} UTC
+          </div>
+
+          {/* User badge + logout */}
+          <div className="flex items-center gap-2">
+            {/* Avatar + name */}
+            <div className="hidden sm:flex items-center gap-1.5 bg-surface border border-border rounded-full pl-1.5 pr-2.5 py-0.5">
+              <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-[10px] font-bold text-white shrink-0">
+                {user.name?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || '?'}
+              </div>
+              <span className="text-gray-400 text-[10px] max-w-[120px] truncate">{user.name || user.email}</span>
+            </div>
+            {/* Sign out button */}
+            <button
+              onClick={logout}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border text-gray-400 hover:text-red-400 hover:border-red-800 hover:bg-red-950/30 transition-all text-[11px] font-medium"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              <span className="hidden sm:inline">Sign Out</span>
+            </button>
           </div>
         </div>
       </header>

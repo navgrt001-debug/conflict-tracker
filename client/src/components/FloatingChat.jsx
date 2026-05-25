@@ -144,7 +144,7 @@ function ChatWindow({ onClose, sessionId }) {
           </svg>
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-bold text-white leading-none">GCMI Intelligence</div>
+          <div className="text-sm font-bold text-white leading-none">Ask Zer0</div>
           <div className="text-[10px] text-blue-300 mt-0.5 flex items-center gap-1">
             <span className="w-1.5 h-1.5 bg-green-400 rounded-full inline-block" />
             Online · Geopolitical AI
@@ -419,7 +419,7 @@ export default function FloatingChat({ sessionId }) {
 
         {/* Tooltip */}
         <span className="absolute bottom-full right-0 mb-2 whitespace-nowrap text-[11px] bg-gray-900 text-white px-2.5 py-1 rounded-lg border border-border opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg">
-          {open ? 'Close chat' : 'Ask GCMI Intelligence'}
+          {open ? 'Close chat' : 'Ask Zer0'}
         </span>
       </button>
     </>,

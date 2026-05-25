@@ -4,6 +4,7 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 
+const authRouter = require('./routes/auth');
 const conflictsRouter = require('./routes/conflicts');
 const marketsRouter = require('./routes/markets');
 const tradeRouter = require('./routes/trade');
@@ -25,6 +26,7 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+app.use('/api/auth', authRouter);
 app.use('/api/conflicts', conflictsRouter);
 app.use('/api/markets', marketsRouter);
 app.use('/api/trade', tradeRouter);
