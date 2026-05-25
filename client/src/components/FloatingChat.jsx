@@ -150,6 +150,7 @@ function ChatWindow({ onClose, sessionId }) {
         {messages.length > 0 && !streaming && (
           <button
             onClick={() => { setMessages([]); setStreamingText(''); }}
+            onPointerDown={e => e.stopPropagation()}
             className="text-[10px] text-blue-400 hover:text-blue-200 transition-colors px-1"
           >
             Clear
@@ -157,6 +158,7 @@ function ChatWindow({ onClose, sessionId }) {
         )}
         <button
           onClick={onClose}
+          onPointerDown={e => e.stopPropagation()}
           className="text-blue-400 hover:text-white transition-colors text-lg leading-none ml-1"
         >
           ×
