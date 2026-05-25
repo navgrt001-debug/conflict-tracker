@@ -405,28 +405,63 @@ async function fetchFXBaseline() {
   }
 }
 
+// Fetch FX rates with three-source fallback:
+//   1. open.er-api.com (free, ~1500 req/month limit)
+//   2. Frankfurter /latest (free, no limit, ~33 currencies)
+//   3. Stale FX cache (from previous successful fetch)
+async function fetchFXRates() {
+  // Source 1: open.er-api.com
+  try {
+    const { data } = await axios.get('https://open.er-api.com/v6/latest/USD', { timeout: 10000 });
+    if (data?.rates && Object.keys(data.rates).length > 10) {
+      cache.set('fx_rates', data.rates, 7200); // 2h cache
+      console.log(`[dataFeed] FX rates from open.er-api: ${Object.keys(data.rates).length} currencies`);
+      return data.rates;
+    }
+  } catch { /* fall through */ }
+
+  // Source 2: Frankfurter /latest
+  try {
+    const { data } = await axios.get('https://api.frankfurter.app/latest?from=USD', { timeout: 10000 });
+    if (data?.rates && Object.keys(data.rates).length > 5) {
+      cache.set('fx_rates', data.rates, 7200);
+      console.log(`[dataFeed] FX rates from Frankfurter: ${Object.keys(data.rates).length} currencies`);
+      return data.rates;
+    }
+  } catch { /* fall through */ }
+
+  // Source 3: stale cache
+  const staleRates = cache.get('fx_rates');
+  if (staleRates) {
+    console.warn('[dataFeed] FX: both sources failed — using stale cache');
+    return staleRates;
+  }
+
+  console.error('[dataFeed] FX: all sources failed and no cache available');
+  return null;
+}
+
 async function fetchPrices() {
   try {
-    const [fxData, freshCommodities] = await Promise.all([
-      axios.get('https://open.er-api.com/v6/latest/USD', { timeout: 10000 })
-        .then(r => r.data).catch(() => null),
+    const [fxRates, freshCommodities] = await Promise.all([
+      fetchFXRates(),
       fetchAllCommodities(),
     ]);
 
-    // Merge fresh results with any stale cached entries for symbols that failed this round
+    // Merge fresh commodities with stale cache for symbols that failed this round
     const staleCache = cache.get('commodities_cache') || [];
     const freshSymbols = new Set(freshCommodities.map(c => c.symbol));
     const missingFromStale = staleCache.filter(c => !freshSymbols.has(c.symbol));
     const commodities = [...freshCommodities, ...missingFromStale];
     if (missingFromStale.length > 0) {
-      console.log(`[dataFeed] Supplemented ${missingFromStale.length} symbols from stale cache`);
+      console.log(`[dataFeed] Supplemented ${missingFromStale.length} commodity symbols from stale cache`);
     }
 
-    // baseline = yesterday's rates for daily % change; fallback to open.er prev_close
+    // Daily change baseline = yesterday's Frankfurter rates
     const baseline = cache.get('fx_baseline') || {};
 
-    const fx = fxData?.rates
-      ? Object.entries(fxData.rates).map(([code, rate]) => {
+    const fx = fxRates
+      ? Object.entries(fxRates).map(([code, rate]) => {
           const prevRate = baseline[code];
           const changePct = prevRate ? ((rate - prevRate) / prevRate) * 100 : 0;
           const change    = prevRate ? rate - prevRate : 0;
