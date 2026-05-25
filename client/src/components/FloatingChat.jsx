@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { streamChat } from '../services/api';
 
 const SUGGESTIONS = [
@@ -360,13 +361,12 @@ export default function FloatingChat({ sessionId }) {
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(false);
 
-  // Clear unread when opening
   const handleToggle = () => {
     setOpen(o => !o);
     setUnread(false);
   };
 
-  return (
+  return createPortal(
     <>
       {/* Chat window */}
       {open && (
@@ -398,6 +398,7 @@ export default function FloatingChat({ sessionId }) {
           {open ? 'Close chat' : 'Ask GCMI Intelligence'}
         </span>
       </button>
-    </>
+    </>,
+    document.body
   );
 }
