@@ -8,7 +8,6 @@ import TradePanel from './components/panels/TradePanel';
 import PredictionPanel from './components/panels/PredictionPanel';
 import FloatingChat from './components/FloatingChat';
 import Dashboard from './components/Dashboard';
-import PredictionDashboard from './components/PredictionDashboard';
 import ScenarioEngine from './components/ScenarioEngine';
 import ScenarioComparison from './components/ScenarioComparison';
 import SupplyChainView from './components/SupplyChain/SupplyChainView';
@@ -24,8 +23,7 @@ const DETAIL_TABS = [
 const MAIN_VIEWS = [
   { id: 'dashboard',    icon: '📊', label: 'Dashboard' },
   { id: 'detail',       icon: '🗺️', label: 'Detail' },
-  { id: 'predictions',  icon: '🎯', label: 'Predictions' },
-  { id: 'scenarios',    icon: '🔮', label: 'Scenarios' },
+{ id: 'scenarios',    icon: '🔮', label: 'Scenarios' },
   { id: 'supply-chain', icon: '🏭', label: 'Supply Chain' },
 ];
 
@@ -116,14 +114,6 @@ export default function App() {
       <div className="flex-1 overflow-hidden">
         {view === 'dashboard' && (
           loading ? <LoadingState /> : <Dashboard conflicts={conflicts} />
-        )}
-
-        {view === 'predictions' && (
-          <div className="flex h-full overflow-hidden">
-            <div className="flex-1 md:max-w-3xl md:mx-auto md:border-x border-border overflow-hidden">
-              <PredictionDashboard />
-            </div>
-          </div>
         )}
 
         {view === 'scenarios' && (
