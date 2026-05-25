@@ -155,87 +155,163 @@ async function fetchNews() {
   }
 }
 
-const YF_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-  'Accept': 'application/json, text/plain, */*',
-  'Accept-Language': 'en-US,en;q=0.9',
-  'Referer': 'https://finance.yahoo.com/',
-  'Origin': 'https://finance.yahoo.com',
+// ── Stooq symbol mapping (Yahoo Finance → Stooq) ──────────────────────────
+const STOOQ_MAP = {
+  'CL=F': 'cl.f', 'BZ=F': 'bz.f', 'GC=F': 'gc.f', 'SI=F': 'si.f',
+  'HG=F': 'hg.f', 'PA=F': 'pa.f', 'PL=F': 'pl.f', 'ALI=F': 'ali.f',
+  'NG=F': 'ng.f', 'HO=F': 'ho.f', 'RB=F': 'rb.f',
+  'ZW=F': 'zw.f', 'ZC=F': 'zc.f', 'ZS=F': 'zs.f',
+  'ZM=F': 'zm.f', 'ZL=F': 'zl.f', 'ZO=F': 'zo.f', 'ZR=F': 'zr.f',
+  'CC=F': 'cc.f', 'KC=F': 'kc.f', 'CT=F': 'ct.f', 'SB=F': 'sb.f',
+  'OJ=F': 'oj.f', 'LE=F': 'le.f', 'GF=F': 'gf.f', 'HE=F': 'he.f',
 };
 
-// Batch-fetch ALL commodity symbols in a single request (avoids rate-limiting)
-async function fetchAllCommodities() {
-  const symbols = Object.keys(COMMODITY_SYMBOLS).join(',');
-  const urls = [
-    `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbols)}&lang=en-US`,
-    `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbols)}&lang=en-US`,
-  ];
+// ── CoinGecko IDs for crypto symbols ──────────────────────────────────────
+const COINGECKO_IDS = {
+  'BTC-USD': 'bitcoin', 'ETH-USD': 'ethereum', 'SOL-USD': 'solana',
+  'BNB-USD': 'binancecoin', 'XRP-USD': 'ripple', 'ADA-USD': 'cardano',
+  'DOGE-USD': 'dogecoin', 'AVAX-USD': 'avalanche-2',
+};
 
-  for (const url of urls) {
-    try {
-      const { data } = await axios.get(url, { headers: YF_HEADERS, timeout: 15000 });
-      const quotes = data?.quoteResponse?.result || [];
-      if (!quotes.length) continue;
+// Parse a single Stooq CSV row → price data object
+function parseStooqRow(yahooSymbol, csvText) {
+  const lines = csvText.trim().split('\n');
+  if (lines.length < 2) return null;
+  const [, date, , open, , , close] = lines[1].split(',');
+  if (!close || close === 'N/D' || !date || date === 'N/D') return null;
 
-      const results = quotes
-        .filter(q => q.regularMarketPrice != null)
-        .map(q => ({
-          symbol: q.symbol,
-          name: COMMODITY_SYMBOLS[q.symbol] || q.shortName || q.symbol,
-          price: q.regularMarketPrice,
-          previousClose: q.regularMarketPreviousClose,
-          change: q.regularMarketChange ?? 0,
-          changePct: q.regularMarketChangePercent ?? 0,
-          currency: q.currency || 'USD',
-          sparkline: [],
-          type: 'commodity',
-        }));
+  const closeNum = parseFloat(close);
+  const openNum  = parseFloat(open) || closeNum;
+  if (isNaN(closeNum) || closeNum === 0) return null;
 
-      if (results.length > 0) {
-        console.log(`[dataFeed] Commodities batch: ${results.length}/${Object.keys(COMMODITY_SYMBOLS).length} symbols`);
-        cache.set('commodities_cache', results);
-        return results;
-      }
-    } catch (err) {
-      console.warn(`[dataFeed] Commodity batch failed (${url.includes('query2') ? 'q2' : 'q1'}):`, err.message);
-    }
+  // Daily % change: compare against cached previous close; fall back to open vs close
+  const prevKey  = `stooq_prev_${yahooSymbol}`;
+  const dateKey  = `stooq_date_${yahooSymbol}`;
+  const cachedDate = cache.get(dateKey);
+  let prevClose = cache.get(prevKey);
+
+  if (cachedDate && cachedDate !== date) {
+    // New trading day — roll yesterday's close
+    cache.set(prevKey, prevClose, 86400);
+    cache.set(dateKey, date, 86400);
+  } else if (!cachedDate) {
+    // First time seen — use open as proxy for previous close
+    cache.set(prevKey, openNum, 86400);
+    cache.set(dateKey, date, 86400);
+    prevClose = openNum;
   }
 
-  // Fall back to last good data
-  const fallback = cache.get('commodities_cache') || [];
-  console.warn(`[dataFeed] Using cached commodity data (${fallback.length} items)`);
-  return fallback;
+  const changePct = prevClose ? ((closeNum - prevClose) / prevClose) * 100 : 0;
+
+  return {
+    symbol: yahooSymbol,
+    name: COMMODITY_SYMBOLS[yahooSymbol] || yahooSymbol,
+    price: closeNum,
+    change: prevClose ? closeNum - prevClose : 0,
+    changePct,
+    type: 'commodity',
+    sparkline: [],
+  };
 }
 
-// Single-symbol lookup for on-demand user requests
-async function fetchOneSymbol(symbol) {
-  // Check batch cache first
-  const batch = cache.get('commodities_cache') || [];
-  const cached = batch.find(c => c.symbol === symbol);
-  if (cached) return cached;
+// Fetch one symbol from Stooq
+async function fetchStooqOne(yahooSymbol) {
+  const stooqSym = STOOQ_MAP[yahooSymbol];
+  if (!stooqSym) return null;
+  try {
+    const { data } = await axios.get(
+      `https://stooq.com/q/l/?s=${stooqSym}&f=sd2t2ohlcv&h&e=csv`,
+      { timeout: 8000 }
+    );
+    return parseStooqRow(yahooSymbol, data);
+  } catch { return null; }
+}
 
-  const urls = [
-    `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}&lang=en-US`,
-    `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}&lang=en-US`,
-  ];
-
-  for (const url of urls) {
-    try {
-      const { data } = await axios.get(url, { headers: YF_HEADERS, timeout: 10000 });
-      const q = data?.quoteResponse?.result?.[0];
-      if (!q || q.regularMarketPrice == null) continue;
+// Fetch crypto prices from CoinGecko (single batch call, includes 24h change)
+async function fetchCrypto() {
+  const cryptoSymbols = Object.keys(COINGECKO_IDS).filter(s => COMMODITY_SYMBOLS[s]);
+  if (!cryptoSymbols.length) return [];
+  const ids = cryptoSymbols.map(s => COINGECKO_IDS[s]).join(',');
+  try {
+    const { data } = await axios.get(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`,
+      { timeout: 10000 }
+    );
+    return cryptoSymbols.map(sym => {
+      const id   = COINGECKO_IDS[sym];
+      const info = data[id];
+      if (!info) return null;
       return {
-        symbol: q.symbol,
-        name: COMMODITY_SYMBOLS[q.symbol] || q.shortName || q.symbol,
-        price: q.regularMarketPrice,
-        previousClose: q.regularMarketPreviousClose,
-        change: q.regularMarketChange ?? 0,
-        changePct: q.regularMarketChangePercent ?? 0,
-        currency: q.currency || 'USD',
-        sparkline: [],
+        symbol: sym,
+        name: COMMODITY_SYMBOLS[sym] || sym,
+        price: info.usd,
+        changePct: info.usd_24h_change ?? 0,
+        change: 0,
         type: 'commodity',
+        sparkline: [],
       };
-    } catch { /* try next */ }
+    }).filter(Boolean);
+  } catch (err) {
+    console.warn('[dataFeed] CoinGecko fetch failed:', err.message);
+    return [];
+  }
+}
+
+// Concurrency-limited batch: run tasks max N at a time
+async function batchAsync(tasks, concurrency = 5) {
+  const results = [];
+  for (let i = 0; i < tasks.length; i += concurrency) {
+    const chunk = await Promise.all(tasks.slice(i, i + concurrency).map(fn => fn()));
+    results.push(...chunk);
+  }
+  return results;
+}
+
+// Fetch all commodity + crypto prices
+async function fetchAllCommodities() {
+  const futuresSymbols = Object.keys(COMMODITY_SYMBOLS).filter(s => STOOQ_MAP[s]);
+  const cryptoSymbols  = Object.keys(COMMODITY_SYMBOLS).filter(s => COINGECKO_IDS[s]);
+
+  const [futuresResults, cryptoResults] = await Promise.all([
+    batchAsync(futuresSymbols.map(s => () => fetchStooqOne(s)), 5),
+    fetchCrypto(),
+  ]);
+
+  const all = [...futuresResults.filter(Boolean), ...cryptoResults];
+  if (all.length > 0) {
+    cache.set('commodities_cache', all);
+    console.log(`[dataFeed] Commodities: ${all.length} (${futuresResults.filter(Boolean).length} futures + ${cryptoResults.length} crypto)`);
+  } else {
+    console.warn('[dataFeed] All commodity sources failed — using cache');
+  }
+  return all.length > 0 ? all : (cache.get('commodities_cache') || []);
+}
+
+// On-demand lookup for user-added custom symbols
+async function fetchOneSymbol(symbol) {
+  // Check commodity cache first
+  const batch = cache.get('commodities_cache') || [];
+  const hit = batch.find(c => c.symbol === symbol);
+  if (hit) return hit;
+
+  // Try Stooq
+  const stooqResult = await fetchStooqOne(symbol);
+  if (stooqResult) return stooqResult;
+
+  // Try CoinGecko for crypto
+  const cgId = COINGECKO_IDS[symbol];
+  if (cgId) {
+    try {
+      const { data } = await axios.get(
+        `https://api.coingecko.com/api/v3/simple/price?ids=${cgId}&vs_currencies=usd&include_24hr_change=true`,
+        { timeout: 8000 }
+      );
+      if (data[cgId]) return {
+        symbol, name: COMMODITY_SYMBOLS[symbol] || symbol,
+        price: data[cgId].usd, changePct: data[cgId].usd_24h_change ?? 0,
+        change: 0, type: 'commodity', sparkline: [],
+      };
+    } catch { /* ignore */ }
   }
   return null;
 }
