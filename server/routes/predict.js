@@ -64,6 +64,16 @@ Provide a comprehensive intelligence assessment covering:
 
 7. **Intelligence Confidence Level** — Rate your confidence (High/Medium/Low) in your assessment and note key uncertainties.
 
+8. **Sources & Citations** — End your report with a "## SOURCES & CITATIONS" section listing 4–6 real, verifiable sources that informed this analysis.
+
+STRICT CITATION RULES — violations undermine the report's credibility:
+- ONLY cite sources you are highly confident exist: ACLED, SIPRI, UN OCHA, UNHCR, ICRC, International Crisis Group, Reuters, AP News, BBC News, The Economist, Financial Times, World Bank, IMF, Council on Foreign Relations, Chatham House, Carnegie Endowment, RAND Corporation, named UN Security Council resolutions (e.g. "UNSC Resolution 2254"), named government reports, or major academic institutions.
+- Format each citation as: **[Organization]** — [Document or report type, e.g. "Armed Conflict Location & Event Data"], [year or date range if known]
+- DO NOT invent article titles, URLs, specific page numbers, or publication dates you are not certain about.
+- DO NOT fabricate think tank papers, academic studies, or news articles.
+- If uncertain whether a specific document exists, cite the organisation generally (e.g. "ACLED conflict database" rather than a made-up report title).
+- Cite only sources directly relevant to THIS conflict's geography, actors, and commodity exposure.
+
 Be direct, specific, and analytical. Use data and historical precedents. Avoid vague platitudes.`;
 }
 
