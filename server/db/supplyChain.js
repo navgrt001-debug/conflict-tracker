@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuid } = require('uuid');
 
-const dataDir = path.join(__dirname, '../data');
+const dataDir = path.join(__dirname, '../data/db');
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 
 const adapter = new FileSync(path.join(dataDir, 'supplyChain.json'));
