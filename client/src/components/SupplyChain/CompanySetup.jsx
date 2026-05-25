@@ -36,7 +36,7 @@ function SearchSelect({ options, value, onChange, placeholder, getLabel, getValu
   }, []);
   const filtered = q.trim()
     ? options.filter(o => getLabel(o).toLowerCase().includes(q.toLowerCase()))
-    : options.slice(0, 100);
+    : options;
   const selected = value ? options.find(o => getValue(o) === value) : null;
   return (
     <div ref={ref} className="relative">
@@ -49,7 +49,7 @@ function SearchSelect({ options, value, onChange, placeholder, getLabel, getValu
         <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-xl z-50 overflow-hidden">
           <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Search…"
             className="w-full px-3 py-2 bg-surface text-sm text-white border-b border-border focus:outline-none placeholder-gray-600" />
-          <div className="max-h-64 overflow-y-auto">
+          <div className="max-h-72 overflow-y-auto">
             {filtered.length === 0
               ? <div className="px-3 py-2 text-xs text-gray-500">No results</div>
               : filtered.map(o => (
