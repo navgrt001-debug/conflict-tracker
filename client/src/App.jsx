@@ -6,7 +6,7 @@ import ConflictDetail from './components/panels/ConflictDetail';
 import MarketPanel from './components/panels/MarketPanel';
 import TradePanel from './components/panels/TradePanel';
 import PredictionPanel from './components/panels/PredictionPanel';
-import ChatPanel from './components/panels/ChatPanel';
+import FloatingChat from './components/FloatingChat';
 import Dashboard from './components/Dashboard';
 import PredictionDashboard from './components/PredictionDashboard';
 import ScenarioEngine from './components/ScenarioEngine';
@@ -19,7 +19,6 @@ const DETAIL_TABS = [
   { id: 'markets', label: 'Markets' },
   { id: 'trade', label: 'Trade' },
   { id: 'predict', label: 'AI Report' },
-  { id: 'chat', label: '💬 Chat' },
 ];
 
 const MAIN_VIEWS = [
@@ -42,7 +41,7 @@ export default function App() {
   // mobile detail sub-view: 'list' | 'map' | 'panel'
   const [mobileDetailView, setMobileDetailView] = useState('list');
 
-  const { sessionId, portfolio, conversationCount } = useSession();
+  const { sessionId } = useSession();
 
   useEffect(() => {
     fetchConflicts()
@@ -188,9 +187,6 @@ export default function App() {
                   <DetailPanel
                     activeTab={activeTab}
                     selected={selected}
-                    sessionId={sessionId}
-                    portfolio={portfolio}
-                    conversationCount={conversationCount}
                   />
                 </div>
               </div>
@@ -240,9 +236,6 @@ export default function App() {
                   <DetailPanel
                     activeTab={activeTab}
                     selected={selected}
-                    sessionId={sessionId}
-                    portfolio={portfolio}
-                    conversationCount={conversationCount}
                   />
                 </div>
               )}
@@ -250,6 +243,9 @@ export default function App() {
           </>
         )}
       </div>
+
+      {/* Floating humanoid chat assistant */}
+      <FloatingChat sessionId={sessionId} />
 
       {/* Mobile bottom tab bar */}
       <nav className="md:hidden flex border-t border-border bg-card shrink-0">
@@ -290,20 +286,13 @@ function DetailTabBar({ activeTab, setActiveTab }) {
   );
 }
 
-function DetailPanel({ activeTab, selected, sessionId, portfolio, conversationCount }) {
+function DetailPanel({ activeTab, selected }) {
   return (
     <div className="flex-1 overflow-hidden">
-      {activeTab === 'overview'  && <ConflictDetail conflict={selected} />}
-      {activeTab === 'markets'   && <MarketPanel conflict={selected} />}
-      {activeTab === 'trade'     && <TradePanel conflict={selected} />}
-      {activeTab === 'predict'   && <PredictionPanel conflict={selected} marketData={null} tradeData={null} />}
-      {activeTab === 'chat' && (
-        <ChatPanel
-          sessionId={sessionId}
-          portfolio={portfolio}
-          conversationCount={conversationCount}
-        />
-      )}
+      {activeTab === 'overview' && <ConflictDetail conflict={selected} />}
+      {activeTab === 'markets'  && <MarketPanel conflict={selected} />}
+      {activeTab === 'trade'    && <TradePanel conflict={selected} />}
+      {activeTab === 'predict'  && <PredictionPanel conflict={selected} marketData={null} tradeData={null} />}
     </div>
   );
 }
