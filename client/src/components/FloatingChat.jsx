@@ -11,57 +11,54 @@ const SUGGESTIONS = [
   'Why is gold hitting record highs?',
 ];
 
+const AVATAR_SIZE = 56; // w-14 = 56px
+const STORAGE_KEY = 'zer0_avatar_pos';
+
+function loadAvatarPos() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (saved && typeof saved.x === 'number') return saved;
+  } catch {}
+  return null;
+}
+
 /* ── Humanoid avatar SVG ───────────────────────────────────────────── */
 function HumanoidAvatar({ pulse }) {
   return (
     <div className="relative w-14 h-14">
-      {/* Outer glow ring — pulses when idle */}
       {pulse && (
         <span className="absolute inset-0 rounded-full bg-blue-500/40 animate-ping pointer-events-none" />
       )}
-      {/* Avatar circle */}
       <div className="relative w-14 h-14 rounded-full bg-gradient-to-br from-blue-600 via-indigo-700 to-violet-900 border-2 border-blue-400 shadow-lg shadow-blue-600/50 flex items-center justify-center overflow-hidden">
         <svg viewBox="0 0 48 52" fill="none" className="w-10 h-10" aria-hidden>
-          {/* Head */}
           <circle cx="24" cy="15" r="9" fill="#bfdbfe" />
-          {/* Hair */}
           <path d="M15 12 Q16 4 24 5 Q32 4 33 12 Q28 8 24 8 Q20 8 15 12Z" fill="#1e40af" />
-          {/* Left eye */}
           <ellipse cx="20.5" cy="14" rx="1.5" ry="1.8" fill="#1e3a8a" />
-          {/* Right eye */}
           <ellipse cx="27.5" cy="14" rx="1.5" ry="1.8" fill="#1e3a8a" />
-          {/* Eye shine */}
           <circle cx="21.2" cy="13.2" r="0.5" fill="white" />
           <circle cx="28.2" cy="13.2" r="0.5" fill="white" />
-          {/* Smile */}
           <path d="M20 18 Q24 21.5 28 18" stroke="#1e3a8a" strokeWidth="1.2" strokeLinecap="round" fill="none" />
-          {/* Neck */}
           <rect x="21.5" y="23" width="5" height="4" rx="1" fill="#bfdbfe" />
-          {/* Collar / shirt */}
           <path d="M10 52 Q10 34 24 30 Q38 34 38 52Z" fill="#3b82f6" />
-          {/* Collar v-neck */}
           <path d="M24 30 L20 38 L24 36 L28 38 Z" fill="#1d4ed8" />
         </svg>
       </div>
-      {/* Online status dot */}
       <span className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 bg-green-400 rounded-full border-2 border-[#0f1117] shadow" />
     </div>
   );
 }
 
 /* ── Floating chat window ─────────────────────────────────────────── */
-function ChatWindow({ onClose, sessionId }) {
+function ChatWindow({ onClose, sessionId, avatarPos }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState('');
   const [summaryGenerated, setSummaryGenerated] = useState(false);
 
-  // Drag state
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const dragging = useRef(false);
   const dragOrigin = useRef({ x: 0, y: 0 });
-
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -85,14 +82,12 @@ function ChatWindow({ onClose, sessionId }) {
   const send = (text) => {
     const content = (text || input).trim();
     if (!content || streaming) return;
-
     const userMsg = { role: 'user', content };
     const nextMessages = [...messages, userMsg];
     setMessages(nextMessages);
     setInput('');
     setStreaming(true);
     setStreamingText('');
-
     let accumulated = '';
     streamChat(
       nextMessages,
@@ -104,11 +99,7 @@ function ChatWindow({ onClose, sessionId }) {
         inputRef.current?.focus();
       },
       (err) => {
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          content: `Error: ${err}`,
-          isError: true,
-        }]);
+        setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err}`, isError: true }]);
         setStreamingText('');
         setStreaming(false);
       },
@@ -118,15 +109,24 @@ function ChatWindow({ onClose, sessionId }) {
 
   const exchangeCount = messages.filter(m => m.role === 'assistant').length;
 
+  // Position chat window above/beside the avatar
+  const chatW = Math.min(360, window.innerWidth - 16);
+  const chatH = 540;
+  let chatRight = window.innerWidth - avatarPos.x - AVATAR_SIZE;
+  let chatBottom = window.innerHeight - avatarPos.y;
+  // Keep on screen
+  chatRight = Math.max(8, Math.min(chatRight, window.innerWidth - chatW - 8));
+  chatBottom = Math.max(8, chatBottom + 8);
+
   return (
     <div
       className="fixed flex flex-col shadow-2xl rounded-2xl overflow-hidden border border-blue-800/60 bg-card"
       style={{
         zIndex: 100000,
-        width: 360,
-        height: 540,
-        bottom: 88,
-        right: 24,
+        width: chatW,
+        height: chatH,
+        bottom: chatBottom,
+        right: chatRight,
         transform: `translate(${pos.x}px, ${pos.y}px)`,
       }}
     >
@@ -170,37 +170,23 @@ function ChatWindow({ onClose, sessionId }) {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
-        {messages.length === 0 && !streaming && (
-          <EmptyState onSuggest={send} />
-        )}
-
-        {messages.map((msg, i) => (
-          <Bubble key={i} msg={msg} />
-        ))}
-
+        {messages.length === 0 && !streaming && <EmptyState onSuggest={send} />}
+        {messages.map((msg, i) => <Bubble key={i} msg={msg} />)}
         {streaming && (
           <div className="flex gap-2 items-start">
             <MiniAvatar />
             <div className="flex-1 bg-surface border border-border rounded-2xl rounded-tl-sm px-3 py-2.5 max-w-[85%]">
-              {streamingText
-                ? <FormattedMessage text={streamingText} streaming />
-                : <ThinkingDots />
-              }
+              {streamingText ? <FormattedMessage text={streamingText} streaming /> : <ThinkingDots />}
             </div>
           </div>
         )}
-
         <div ref={bottomRef} />
       </div>
 
-      {/* Quick action */}
       {exchangeCount >= 2 && !streaming && !summaryGenerated && (
         <div className="px-3 pb-2 shrink-0">
           <button
-            onClick={() => {
-              setSummaryGenerated(true);
-              send('Please give me the full intelligence summary with three scenarios.');
-            }}
+            onClick={() => { setSummaryGenerated(true); send('Please give me the full intelligence summary with three scenarios.'); }}
             className="w-full py-1.5 text-xs font-medium bg-amber-950 border border-amber-700 text-amber-300 rounded-lg hover:bg-amber-900 transition-colors"
           >
             Generate 3-Scenario Summary →
@@ -208,27 +194,21 @@ function ChatWindow({ onClose, sessionId }) {
         </div>
       )}
 
-      {/* Post-summary prompt */}
       {summaryGenerated && !streaming && (
         <div className="px-3 pb-2 shrink-0">
           <div className="flex gap-2">
-            <button
-              onClick={() => send('I have a follow-up question about this.')}
-              className="flex-1 py-1.5 text-xs font-medium bg-surface border border-border text-gray-400 rounded-lg hover:border-blue-600 hover:text-blue-300 transition-colors"
-            >
+            <button onClick={() => send('I have a follow-up question about this.')}
+              className="flex-1 py-1.5 text-xs font-medium bg-surface border border-border text-gray-400 rounded-lg hover:border-blue-600 hover:text-blue-300 transition-colors">
               💬 Continue discussion
             </button>
-            <button
-              onClick={() => send('What else should I know about this situation?')}
-              className="flex-1 py-1.5 text-xs font-medium bg-surface border border-border text-gray-400 rounded-lg hover:border-blue-600 hover:text-blue-300 transition-colors"
-            >
+            <button onClick={() => send('What else should I know about this situation?')}
+              className="flex-1 py-1.5 text-xs font-medium bg-surface border border-border text-gray-400 rounded-lg hover:border-blue-600 hover:text-blue-300 transition-colors">
               🔍 Ask something else
             </button>
           </div>
         </div>
       )}
 
-      {/* Input */}
       <div className="px-3 pb-3 pt-2 shrink-0 border-t border-border">
         <div className="flex gap-2 items-end">
           <textarea
@@ -264,11 +244,9 @@ function Bubble({ msg }) {
     <div className={`flex gap-2 items-start ${isUser ? 'flex-row-reverse' : ''}`}>
       {!isUser && <MiniAvatar />}
       <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
-        isUser
-          ? 'bg-blue-600 text-white rounded-tr-sm'
-          : msg.isError
-            ? 'bg-red-950 border border-red-800 text-red-300 rounded-tl-sm'
-            : 'bg-surface border border-border text-gray-200 rounded-tl-sm'
+        isUser ? 'bg-blue-600 text-white rounded-tr-sm'
+          : msg.isError ? 'bg-red-950 border border-red-800 text-red-300 rounded-tl-sm'
+          : 'bg-surface border border-border text-gray-200 rounded-tl-sm'
       }`}>
         {isUser ? <p>{msg.content}</p> : <FormattedMessage text={msg.content} />}
       </div>
@@ -310,11 +288,8 @@ function EmptyState({ onSuggest }) {
       <p className="text-[10px] text-gray-600 uppercase tracking-wider px-1 mb-2">Try asking</p>
       <div className="space-y-1.5">
         {SUGGESTIONS.map(s => (
-          <button
-            key={s}
-            onClick={() => onSuggest(s)}
-            className="w-full text-left text-xs text-gray-400 bg-surface hover:bg-gray-800 border border-border rounded-lg px-3 py-2 transition-colors"
-          >
+          <button key={s} onClick={() => onSuggest(s)}
+            className="w-full text-left text-xs text-gray-400 bg-surface hover:bg-gray-800 border border-border rounded-lg px-3 py-2 transition-colors">
             {s}
           </button>
         ))}
@@ -354,11 +329,9 @@ function FormattedMessage({ text, streaming }) {
 }
 
 function ScenarioHeader({ title, probability }) {
-  const color = probability >= 50
-    ? 'border-red-700 bg-red-950 text-red-300'
-    : probability >= 25
-      ? 'border-amber-700 bg-amber-950 text-amber-300'
-      : 'border-green-800 bg-green-950 text-green-300';
+  const color = probability >= 50 ? 'border-red-700 bg-red-950 text-red-300'
+    : probability >= 25 ? 'border-amber-700 bg-amber-950 text-amber-300'
+    : 'border-green-800 bg-green-950 text-green-300';
   const bar = probability >= 50 ? 'bg-red-500' : probability >= 25 ? 'bg-amber-500' : 'bg-green-500';
   return (
     <div className={`mt-3 mb-1 rounded-lg border px-3 py-2 ${color}`}>
@@ -385,43 +358,93 @@ export default function FloatingChat({ sessionId }) {
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(false);
 
-  const handleToggle = () => {
-    setOpen(o => !o);
-    setUnread(false);
-  };
+  // Avatar position in screen coords (top-left of avatar)
+  const getDefaultPos = () => ({
+    x: window.innerWidth - AVATAR_SIZE - 24,
+    y: window.innerHeight - AVATAR_SIZE - 24,
+  });
+
+  const [avatarPos, setAvatarPos] = useState(() => loadAvatarPos() || getDefaultPos());
+
+  const dragging = useRef(false);
+  const dragMoved = useRef(false);
+  const dragOrigin = useRef({ x: 0, y: 0 });
+
+  // Save position whenever it changes
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(avatarPos));
+  }, [avatarPos]);
+
+  const onAvatarPointerDown = useCallback((e) => {
+    dragging.current = true;
+    dragMoved.current = false;
+    dragOrigin.current = { x: e.clientX - avatarPos.x, y: e.clientY - avatarPos.y };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  }, [avatarPos]);
+
+  const onAvatarPointerMove = useCallback((e) => {
+    if (!dragging.current) return;
+    const newX = e.clientX - dragOrigin.current.x;
+    const newY = e.clientY - dragOrigin.current.y;
+    // Clamp to viewport
+    const clampedX = Math.max(0, Math.min(newX, window.innerWidth - AVATAR_SIZE));
+    const clampedY = Math.max(0, Math.min(newY, window.innerHeight - AVATAR_SIZE));
+    const dx = clampedX - avatarPos.x;
+    const dy = clampedY - avatarPos.y;
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) dragMoved.current = true;
+    setAvatarPos({ x: clampedX, y: clampedY });
+  }, [avatarPos]);
+
+  const onAvatarPointerUp = useCallback((e) => {
+    if (!dragging.current) return;
+    dragging.current = false;
+    // Only toggle open/close if it was a tap, not a drag
+    if (!dragMoved.current) {
+      setOpen(o => !o);
+      setUnread(false);
+    }
+  }, []);
 
   return createPortal(
     <>
-      {/* Chat window */}
       {open && (
         <ChatWindow
           onClose={() => setOpen(false)}
           sessionId={sessionId}
+          avatarPos={avatarPos}
         />
       )}
 
-      {/* Floating avatar button */}
-      <button
-        onClick={handleToggle}
-        className="fixed bottom-6 right-6 focus:outline-none group"
-        style={{ zIndex: 100001 }}
-        aria-label="Open geopolitical intelligence chat"
-        title="Geopolitical Intelligence Chat"
+      {/* Draggable avatar button */}
+      <div
+        onPointerDown={onAvatarPointerDown}
+        onPointerMove={onAvatarPointerMove}
+        onPointerUp={onAvatarPointerUp}
+        className="fixed touch-none cursor-grab active:cursor-grabbing group"
+        style={{
+          zIndex: 100001,
+          left: avatarPos.x,
+          top: avatarPos.y,
+          width: AVATAR_SIZE,
+          height: AVATAR_SIZE,
+          userSelect: 'none',
+        }}
+        aria-label="Ask Zer0"
       >
         <HumanoidAvatar pulse={!open} />
 
-        {/* Unread badge */}
         {unread && (
           <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[9px] text-white flex items-center justify-center font-bold shadow">
             1
           </span>
         )}
 
-        {/* Tooltip */}
-        <span className="absolute bottom-full right-0 mb-2 whitespace-nowrap text-[11px] bg-gray-900 text-white px-2.5 py-1 rounded-lg border border-border opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg">
-          {open ? 'Close chat' : 'Ask Zer0'}
+        {/* Drag hint on long hover */}
+        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 whitespace-nowrap text-[11px] bg-gray-900 text-white px-2.5 py-1 rounded-lg border border-border opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg">
+          {open ? 'Close · drag to move' : 'Ask Zer0 · drag to move'}
         </span>
-      </button>
+      </div>
     </>,
     document.body
   );
