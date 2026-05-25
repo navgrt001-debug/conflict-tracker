@@ -11,8 +11,6 @@ import Dashboard from './components/Dashboard';
 import PredictionDashboard from './components/PredictionDashboard';
 import ScenarioEngine from './components/ScenarioEngine';
 import ScenarioComparison from './components/ScenarioComparison';
-import PortfolioSetup from './components/PortfolioSetup';
-import PortfolioRiskPanel from './components/PortfolioRiskPanel';
 import SupplyChainView from './components/SupplyChain/SupplyChainView';
 import useSession from './hooks/useSession';
 
@@ -21,7 +19,6 @@ const DETAIL_TABS = [
   { id: 'markets', label: 'Markets' },
   { id: 'trade', label: 'Trade' },
   { id: 'predict', label: 'AI Report' },
-  { id: 'portfolio', label: '💼 Risk' },
   { id: 'chat', label: '💬 Chat' },
 ];
 
@@ -41,11 +38,11 @@ export default function App() {
   const [savedScenarios, setSavedScenarios] = useState([]);
   const [scenariosTab, setScenariosTab] = useState('analyze');
   const [loading, setLoading] = useState(true);
-  const [portfolioOpen, setPortfolioOpen] = useState(false);
+
   // mobile detail sub-view: 'list' | 'map' | 'panel'
   const [mobileDetailView, setMobileDetailView] = useState('list');
 
-  const { sessionId, portfolio, conversationCount, hasPortfolio, savePortfolio, isSaving } = useSession();
+  const { sessionId, portfolio, conversationCount } = useSession();
 
   useEffect(() => {
     fetchConflicts()
@@ -60,7 +57,7 @@ export default function App() {
     setMobileDetailView('panel');
   };
 
-  const panelWidth = activeTab === 'chat' ? 'md:w-[520px]' : activeTab === 'portfolio' ? 'md:w-[420px]' : 'md:w-96';
+  const panelWidth = activeTab === 'chat' ? 'md:w-[520px]' : 'md:w-96';
 
   const handleSaveForComparison = (entry) => {
     setSavedScenarios(prev => {
@@ -108,17 +105,6 @@ export default function App() {
             ))}
           </div>
 
-          {/* Portfolio button */}
-          <button
-            onClick={() => setPortfolioOpen(true)}
-            className={`flex items-center gap-1 px-2 py-1.5 text-xs rounded-lg border transition-colors ${
-              hasPortfolio
-                ? 'bg-blue-950/40 border-blue-700 text-blue-300 hover:border-blue-500'
-                : 'border-border text-gray-500 hover:text-gray-300 hover:border-gray-500'
-            }`}
-          >
-            💼 <span className="hidden sm:inline">{hasPortfolio ? `Portfolio (${portfolio.assets.length})` : 'Setup Portfolio'}</span>
-          </button>
 
           <div className="hidden lg:block text-gray-600 font-mono text-[10px]">
             {new Date().toUTCString().slice(0, 22)} UTC
@@ -126,14 +112,6 @@ export default function App() {
         </div>
       </header>
 
-      {portfolioOpen && (
-        <PortfolioSetup
-          initialPortfolio={portfolio}
-          onSave={(p) => { savePortfolio(p); setPortfolioOpen(false); }}
-          onClose={() => setPortfolioOpen(false)}
-          isSaving={isSaving}
-        />
-      )}
 
       {/* Views */}
       <div className="flex-1 overflow-hidden">
@@ -213,8 +191,6 @@ export default function App() {
                     sessionId={sessionId}
                     portfolio={portfolio}
                     conversationCount={conversationCount}
-                    hasPortfolio={hasPortfolio}
-                    onSetupPortfolio={() => setPortfolioOpen(true)}
                   />
                 </div>
               </div>
@@ -267,8 +243,6 @@ export default function App() {
                     sessionId={sessionId}
                     portfolio={portfolio}
                     conversationCount={conversationCount}
-                    hasPortfolio={hasPortfolio}
-                    onSetupPortfolio={() => setPortfolioOpen(true)}
                   />
                 </div>
               )}
@@ -316,24 +290,18 @@ function DetailTabBar({ activeTab, setActiveTab }) {
   );
 }
 
-function DetailPanel({ activeTab, selected, sessionId, portfolio, conversationCount, hasPortfolio, onSetupPortfolio }) {
+function DetailPanel({ activeTab, selected, sessionId, portfolio, conversationCount }) {
   return (
     <div className="flex-1 overflow-hidden">
       {activeTab === 'overview'  && <ConflictDetail conflict={selected} />}
       {activeTab === 'markets'   && <MarketPanel conflict={selected} />}
       {activeTab === 'trade'     && <TradePanel conflict={selected} />}
       {activeTab === 'predict'   && <PredictionPanel conflict={selected} marketData={null} tradeData={null} />}
-      {activeTab === 'portfolio' && (
-        <div className="p-4 overflow-y-auto h-full">
-          <PortfolioRiskPanel sessionId={sessionId} hasPortfolio={hasPortfolio} onSetupPortfolio={onSetupPortfolio} />
-        </div>
-      )}
       {activeTab === 'chat' && (
         <ChatPanel
           sessionId={sessionId}
           portfolio={portfolio}
           conversationCount={conversationCount}
-          onSetupPortfolio={onSetupPortfolio}
         />
       )}
     </div>
