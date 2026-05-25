@@ -43,8 +43,4 @@ function sanitize(user) {
   return safe;
 }
 
-function clearAll() {
-  db.set('users', []).write();
-}
-
-module.exports = { createUser, findByEmail, findById, findByGoogleId, sanitize, clearAll };
+module.exports = { createUser, findByEmail, findById, findByGoogleId, sanitize };
