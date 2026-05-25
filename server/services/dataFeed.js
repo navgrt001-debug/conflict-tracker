@@ -483,12 +483,48 @@ async function refresh() {
   await Promise.all([fetchNews(), fetchPrices()]);
 }
 
-function startScheduler() {
-  // Load yesterday's FX rates immediately, then refresh every 24h at midnight
-  fetchFXBaseline();
-  cron.schedule('1 0 * * *', fetchFXBaseline); // 00:01 UTC daily
+// On startup: fetch FX immediately (fast, ~2s) so the client sees prices right away,
+// then fetch commodities in the background (slow, 30-60s due to Stooq batching).
+async function initPrices() {
+  try {
+    // Phase 1: FX only — publish to cache immediately
+    const [fxRates] = await Promise.all([fetchFXRates(), fetchFXBaseline()]);
+    const baseline = cache.get('fx_baseline') || {};
+    const fx = fxRates
+      ? Object.entries(fxRates).map(([code, rate]) => {
+          const prevRate = baseline[code];
+          const changePct = prevRate ? ((rate - prevRate) / prevRate) * 100 : 0;
+          const change    = prevRate ? rate - prevRate : 0;
+          return { symbol: code, name: `USD/${code}`, price: rate, changePct, change, type: 'fx', sparkline: [] };
+        })
+      : [];
+    // Publish FX-only result so clients see currencies within seconds
+    cache.set('prices', { commodities: [], fx, updatedAt: new Date().toISOString() });
+    console.log(`[dataFeed] Fast init: ${fx.length} FX currencies ready`);
 
-  refresh();
+    // Phase 2: commodities in background — update cache when done
+    fetchAllCommodities().then(commodities => {
+      const current = cache.get('prices') || {};
+      cache.set('prices', { ...current, commodities, updatedAt: new Date().toISOString() });
+      console.log(`[dataFeed] Slow init: ${commodities.length} commodities ready`);
+    }).catch(err => console.error('[dataFeed] Commodity init error:', err.message));
+
+  } catch (err) {
+    console.error('[dataFeed] initPrices error:', err.message);
+    // Fall back to full fetchPrices
+    fetchPrices().catch(() => {});
+  }
+}
+
+function startScheduler() {
+  // Fast startup: FX in ~2s, commodities fill in behind
+  initPrices();
+  fetchNews();
+
+  // Daily FX baseline refresh at midnight
+  cron.schedule('1 0 * * *', fetchFXBaseline);
+
+  // Full refresh every 5 minutes (after startup)
   cron.schedule('*/5 * * * *', refresh);
 }
 

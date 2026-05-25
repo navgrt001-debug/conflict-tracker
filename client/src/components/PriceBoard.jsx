@@ -154,27 +154,18 @@ export default function PriceBoard() {
       <div className="flex gap-3 overflow-x-auto px-4 py-3 scrollbar-thin">
         {(() => {
           const hasPrefs = prefs.commodities.length > 0 || prefs.fx.length > 0 || (prefs.custom || []).length > 0;
-          const dataArrived = !!data;
+          // updatedAt === null means server hasn't completed its first fetch yet
+          const serverReady = data?.updatedAt != null;
 
-          // 1. Still fetching and nothing to show yet → skeletons
-          if ((isLoading || isFetching) && visible.length === 0) {
+          // 1. Still fetching, or server not ready yet → skeletons
+          if (isLoading || isFetching || !serverReady) {
             return Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="min-w-[140px] h-24 bg-card border border-border rounded-lg animate-pulse shrink-0" />
             ));
           }
 
-          // 2. Data loaded, prefs have symbols, but none resolved yet → price data unavailable
-          if (visible.length === 0 && hasPrefs && dataArrived) {
-            return (
-              <div className="flex items-center gap-2 text-xs text-gray-600 py-2">
-                <span className="animate-spin text-gray-500">⟳</span>
-                Price data loading — retrying…
-              </div>
-            );
-          }
-
-          // 3. Prefs truly empty → prompt to customise
-          if (visible.length === 0 && !hasPrefs) {
+          // 2. Prefs truly empty → prompt to customise
+          if (!hasPrefs) {
             return (
               <div className="flex items-center gap-2 text-xs text-gray-600 py-2">
                 No symbols selected.
@@ -183,6 +174,13 @@ export default function PriceBoard() {
                 </button>
               </div>
             );
+          }
+
+          // 3. Prefs have symbols but nothing resolved yet (commodity data still loading)
+          if (visible.length === 0) {
+            return Array.from({ length: prefs.commodities.length || 3 }).map((_, i) => (
+              <div key={i} className="min-w-[140px] h-24 bg-card border border-border rounded-lg animate-pulse shrink-0" />
+            ));
           }
 
           // 4. Normal render
