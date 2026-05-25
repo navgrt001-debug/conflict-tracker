@@ -53,13 +53,13 @@ export default function SupplyChainView() {
         {setupOpen && (
           <CompanySetup onCreated={handleCreated} onClose={() => setSetupOpen(false)} />
         )}
-        <div className="text-center max-w-md">
+        <div className="text-center max-w-lg mx-auto w-full flex flex-col items-center">
           <div className="text-5xl mb-4">🏭</div>
           <h2 className="text-white font-bold text-xl mb-2">Supply Chain Intelligence</h2>
           <p className="text-gray-400 text-sm mb-6 leading-relaxed">
             Model how global conflicts, commodity disruptions and inflation affect your P&L — with AI-driven quarterly forecasts and CFO-ready sensitivity analysis.
           </p>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-8 w-full">
             {[
               { icon: '📈', title: 'P&L Forecast', desc: '4-quarter AI impact modelling on your financials' },
               { icon: '🎯', title: 'Sensitivity Grid', desc: 'CFO-ready scenario table across cost changes' },
