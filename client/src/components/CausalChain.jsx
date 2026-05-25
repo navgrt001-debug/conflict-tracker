@@ -38,12 +38,42 @@ export default function CausalChain({ event }) {
 
   if (isLoading || isFetching) {
     return (
-      <div className="p-4 space-y-3">
-        <div className="h-4 bg-surface rounded animate-pulse w-3/4" />
-        <div className="h-3 bg-surface rounded animate-pulse w-1/2" />
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-20 bg-surface rounded animate-pulse" />
-        ))}
+      <div className="flex flex-col items-center justify-center h-full gap-5 p-6 text-center">
+        {/* Spinning ring */}
+        <div className="relative w-14 h-14">
+          <div className="absolute inset-0 rounded-full border-2 border-gray-800" />
+          <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-blue-500 animate-spin" />
+          <div className="absolute inset-2 rounded-full border-2 border-transparent border-t-blue-400 animate-spin [animation-duration:1.4s]" />
+          <div className="absolute inset-0 flex items-center justify-center text-lg">⛓️</div>
+        </div>
+
+        {/* Label */}
+        <div>
+          <div className="text-sm font-semibold text-white mb-1">Analysing causal chain…</div>
+          <div className="text-xs text-gray-500 max-w-[200px] leading-relaxed">
+            AI is tracing market &amp; geopolitical ripple effects. This usually takes 10–20 seconds.
+          </div>
+        </div>
+
+        {/* Animated dots row */}
+        <div className="flex gap-1.5">
+          {[0, 1, 2, 3, 4].map(i => (
+            <div
+              key={i}
+              className="w-1.5 h-1.5 rounded-full bg-blue-500"
+              style={{ animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite` }}
+            />
+          ))}
+        </div>
+
+        {/* Skeleton preview — gives context while waiting */}
+        <div className="w-full space-y-2 mt-2 opacity-30">
+          <div className="h-3 bg-surface rounded animate-pulse w-5/6 mx-auto" />
+          <div className="h-3 bg-surface rounded animate-pulse w-3/4 mx-auto" />
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-12 bg-surface rounded animate-pulse" />
+          ))}
+        </div>
       </div>
     );
   }
