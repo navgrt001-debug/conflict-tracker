@@ -75,5 +75,12 @@ router.get('/me', requireAuth, (req, res) => {
   res.json(usersDb.sanitize(user));
 });
 
+// DELETE /api/auth/reset-users?key=zer0-reset-2026 — temporary wipe
+router.delete('/reset-users', (req, res) => {
+  if (req.query.key !== 'zer0-reset-2026') return res.status(403).json({ error: 'Forbidden' });
+  usersDb.clearAll();
+  res.json({ ok: true, message: 'All users cleared' });
+});
+
 
 module.exports = router;
