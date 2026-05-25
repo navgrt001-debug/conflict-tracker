@@ -46,12 +46,6 @@ export default function ConflictMap({ conflicts, selected, onSelect }) {
                   <div>Risk: <span className="text-red-400 font-bold">{conflict.scores.combined}/100 ({conflict.scores.label})</span></div>
                 )}
               </div>
-              <button
-                onClick={() => onSelect(conflict)}
-                className="mt-2 text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 w-full"
-              >
-                Analyze →
-              </button>
             </div>
           </Popup>
         </CircleMarker>
