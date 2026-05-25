@@ -34,7 +34,9 @@ function SearchSelect({ options, value, onChange, placeholder, getLabel, getValu
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
-  const filtered = options.filter(o => getLabel(o).toLowerCase().includes(q.toLowerCase())).slice(0, 8);
+  const filtered = q.trim()
+    ? options.filter(o => getLabel(o).toLowerCase().includes(q.toLowerCase()))
+    : options.slice(0, 100);
   const selected = value ? options.find(o => getValue(o) === value) : null;
   return (
     <div ref={ref} className="relative">
@@ -47,7 +49,7 @@ function SearchSelect({ options, value, onChange, placeholder, getLabel, getValu
         <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-xl z-50 overflow-hidden">
           <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Search…"
             className="w-full px-3 py-2 bg-surface text-sm text-white border-b border-border focus:outline-none placeholder-gray-600" />
-          <div className="max-h-48 overflow-y-auto">
+          <div className="max-h-64 overflow-y-auto">
             {filtered.length === 0
               ? <div className="px-3 py-2 text-xs text-gray-500">No results</div>
               : filtered.map(o => (
@@ -267,6 +269,10 @@ function StepSourceCountries({ materials, onChange, onNext, onBack }) {
   };
 
   const allHaveSources = materials.every(m => (m.source_countries || []).length > 0);
+  const allAt100 = materials.every(m =>
+    (m.source_countries || []).reduce((s, c) => s + (Number(c.supply_percentage) || 0), 0) === 100
+  );
+  const canContinue = allHaveSources && allAt100;
 
   return (
     <div className="space-y-4">
@@ -329,9 +335,11 @@ function StepSourceCountries({ materials, onChange, onNext, onBack }) {
 
       <div className="flex gap-2">
         <button onClick={onBack} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-300">← Back</button>
-        <button onClick={onNext} disabled={!allHaveSources}
+        <button onClick={onNext} disabled={!canContinue}
           className="flex-1 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-colors">
-          {allHaveSources ? 'Continue →' : 'Add at least one source per material'}
+          {!allHaveSources ? 'Add at least one source per material'
+            : !allAt100 ? `Reach 100% for all materials`
+            : 'Continue →'}
         </button>
       </div>
     </div>
@@ -401,9 +409,12 @@ function StepBuyerMarkets({ buyers, onChange, onNext, onBack }) {
 
       <div className="flex gap-2 pt-1">
         <button onClick={onBack} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-300">← Back</button>
-        <button onClick={onNext} disabled={buyers.length === 0}
+        <button onClick={onNext} disabled={totalPct !== 100}
           className="flex-1 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-colors">
-          Continue →
+          {buyers.length === 0 ? 'Add at least one buyer market'
+            : totalPct < 100 ? `${100 - totalPct}% remaining — reach 100%`
+            : totalPct > 100 ? `Over by ${totalPct - 100}% — fix allocation`
+            : 'Continue →'}
         </button>
       </div>
     </div>
