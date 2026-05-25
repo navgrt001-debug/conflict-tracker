@@ -177,8 +177,13 @@ const COINGECKO_IDS = {
 function parseStooqRow(yahooSymbol, csvText) {
   const lines = csvText.trim().split('\n');
   if (lines.length < 2) return null;
-  const [, date, , open, , , close] = lines[1].split(',');
-  if (!close || close === 'N/D' || !date || date === 'N/D') return null;
+  // Validate header row exists (should start with "Symbol" or similar)
+  const headerCols = lines[0].split(',').length;
+  if (headerCols < 6) return null; // not a valid CSV
+  const cols = lines[1].split(',');
+  if (cols.length < 7) return null;
+  const [, date, , open, , , close] = cols;
+  if (!close || close.trim() === 'N/D' || !date || date.trim() === 'N/D') return null;
 
   const closeNum = parseFloat(close);
   const openNum  = parseFloat(open) || closeNum;
@@ -214,17 +219,41 @@ function parseStooqRow(yahooSymbol, csvText) {
   };
 }
 
-// Fetch one symbol from Stooq
-async function fetchStooqOne(yahooSymbol) {
+// Fetch one symbol from Stooq (with retry and HTML-response guard)
+async function fetchStooqOne(yahooSymbol, attempt = 0) {
   const stooqSym = STOOQ_MAP[yahooSymbol];
   if (!stooqSym) return null;
   try {
     const { data } = await axios.get(
       `https://stooq.com/q/l/?s=${stooqSym}&f=sd2t2ohlcv&h&e=csv`,
-      { timeout: 8000 }
+      {
+        timeout: 10000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; MarketDataBot/1.0)',
+          'Accept': 'text/csv, text/plain, */*',
+        },
+      }
     );
-    return parseStooqRow(yahooSymbol, data);
-  } catch { return null; }
+    // Stooq sometimes returns an HTML error page instead of CSV — detect and skip
+    if (typeof data !== 'string' || data.trimStart().startsWith('<')) {
+      console.warn(`[dataFeed] Stooq returned HTML for ${stooqSym} — skipping`);
+      return null;
+    }
+    const result = parseStooqRow(yahooSymbol, data);
+    if (!result && attempt === 0) {
+      // One retry after 1 second
+      await new Promise(r => setTimeout(r, 1000));
+      return fetchStooqOne(yahooSymbol, 1);
+    }
+    return result;
+  } catch (err) {
+    if (attempt === 0) {
+      await new Promise(r => setTimeout(r, 1500));
+      return fetchStooqOne(yahooSymbol, 1);
+    }
+    console.warn(`[dataFeed] Stooq failed for ${stooqSym}:`, err.message);
+    return null;
+  }
 }
 
 // Fetch crypto prices from CoinGecko (single batch call, includes 24h change)
@@ -258,11 +287,13 @@ async function fetchCrypto() {
 }
 
 // Concurrency-limited batch: run tasks max N at a time
-async function batchAsync(tasks, concurrency = 5) {
+async function batchAsync(tasks, concurrency = 3) {
   const results = [];
   for (let i = 0; i < tasks.length; i += concurrency) {
     const chunk = await Promise.all(tasks.slice(i, i + concurrency).map(fn => fn()));
     results.push(...chunk);
+    // Small delay between batches to avoid rate-limiting
+    if (i + concurrency < tasks.length) await new Promise(r => setTimeout(r, 300));
   }
   return results;
 }
@@ -270,19 +301,22 @@ async function batchAsync(tasks, concurrency = 5) {
 // Fetch all commodity + crypto prices
 async function fetchAllCommodities() {
   const futuresSymbols = Object.keys(COMMODITY_SYMBOLS).filter(s => STOOQ_MAP[s]);
-  const cryptoSymbols  = Object.keys(COMMODITY_SYMBOLS).filter(s => COINGECKO_IDS[s]);
 
   const [futuresResults, cryptoResults] = await Promise.all([
-    batchAsync(futuresSymbols.map(s => () => fetchStooqOne(s)), 5),
+    batchAsync(futuresSymbols.map(s => () => fetchStooqOne(s)), 3),
     fetchCrypto(),
   ]);
 
-  const all = [...futuresResults.filter(Boolean), ...cryptoResults];
+  const futures = futuresResults.filter(Boolean);
+  const all = [...futures, ...cryptoResults];
+
+  console.log(`[dataFeed] Commodities: ${all.length} total (${futures.length}/${futuresSymbols.length} futures + ${cryptoResults.length} crypto)`);
+
   if (all.length > 0) {
-    cache.set('commodities_cache', all);
-    console.log(`[dataFeed] Commodities: ${all.length} (${futuresResults.filter(Boolean).length} futures + ${cryptoResults.length} crypto)`);
+    // Store with 2h TTL so stale data survives failed refreshes
+    cache.set('commodities_cache', all, 7200);
   } else {
-    console.warn('[dataFeed] All commodity sources failed — using cache');
+    console.warn('[dataFeed] All commodity sources failed — returning stale cache');
   }
   return all.length > 0 ? all : (cache.get('commodities_cache') || []);
 }
@@ -342,11 +376,20 @@ async function fetchFXBaseline() {
 
 async function fetchPrices() {
   try {
-    const [fxData, commodities] = await Promise.all([
+    const [fxData, freshCommodities] = await Promise.all([
       axios.get('https://open.er-api.com/v6/latest/USD', { timeout: 10000 })
         .then(r => r.data).catch(() => null),
       fetchAllCommodities(),
     ]);
+
+    // Merge fresh results with any stale cached entries for symbols that failed this round
+    const staleCache = cache.get('commodities_cache') || [];
+    const freshSymbols = new Set(freshCommodities.map(c => c.symbol));
+    const missingFromStale = staleCache.filter(c => !freshSymbols.has(c.symbol));
+    const commodities = [...freshCommodities, ...missingFromStale];
+    if (missingFromStale.length > 0) {
+      console.log(`[dataFeed] Supplemented ${missingFromStale.length} symbols from stale cache`);
+    }
 
     // baseline = yesterday's rates for daily % change; fallback to open.er prev_close
     const baseline = cache.get('fx_baseline') || {};
