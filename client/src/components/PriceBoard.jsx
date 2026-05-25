@@ -44,7 +44,7 @@ export default function PriceBoard() {
   const [customData, setCustomData] = useState({}); // symbol → price data
 
   // Batch prices (commodities + all FX)
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ['feed-prices'],
     queryFn: () => fetch(`${API}/feed/prices`).then(r => r.json()),
     refetchInterval: 60_000,
@@ -152,25 +152,46 @@ export default function PriceBoard() {
 
       {/* Ticker */}
       <div className="flex gap-3 overflow-x-auto px-4 py-3 scrollbar-thin">
-        {isLoading && visible.length === 0
-          ? Array.from({ length: 6 }).map((_, i) => (
+        {(() => {
+          const hasPrefs = prefs.commodities.length > 0 || prefs.fx.length > 0 || (prefs.custom || []).length > 0;
+          const dataArrived = !!data;
+
+          // 1. Still fetching and nothing to show yet → skeletons
+          if ((isLoading || isFetching) && visible.length === 0) {
+            return Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="min-w-[140px] h-24 bg-card border border-border rounded-lg animate-pulse shrink-0" />
-            ))
-          : visible.length === 0
-          ? (
-            <div className="flex items-center gap-2 text-xs text-gray-600 py-2">
-              No symbols selected.
-              <button onClick={() => setCustomizerOpen(true)} className="text-blue-400 underline">
-                Open customizer
-              </button>
-            </div>
-          )
-          : visible.map(item => (
-              <div key={item.symbol} className="shrink-0">
-                <PriceCard item={item} />
+            ));
+          }
+
+          // 2. Data loaded, prefs have symbols, but none resolved yet → price data unavailable
+          if (visible.length === 0 && hasPrefs && dataArrived) {
+            return (
+              <div className="flex items-center gap-2 text-xs text-gray-600 py-2">
+                <span className="animate-spin text-gray-500">⟳</span>
+                Price data loading — retrying…
               </div>
-            ))
-        }
+            );
+          }
+
+          // 3. Prefs truly empty → prompt to customise
+          if (visible.length === 0 && !hasPrefs) {
+            return (
+              <div className="flex items-center gap-2 text-xs text-gray-600 py-2">
+                No symbols selected.
+                <button onClick={() => setCustomizerOpen(true)} className="text-blue-400 underline">
+                  Open customizer
+                </button>
+              </div>
+            );
+          }
+
+          // 4. Normal render
+          return visible.map(item => (
+            <div key={item.symbol} className="shrink-0">
+              <PriceCard item={item} />
+            </div>
+          ));
+        })()}
       </div>
     </div>
   );
