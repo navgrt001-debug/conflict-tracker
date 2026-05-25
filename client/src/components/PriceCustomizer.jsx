@@ -61,7 +61,12 @@ export function loadPrefs() {
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return DEFAULT_PREFS;
     const p = JSON.parse(raw);
-    return { ...DEFAULT_PREFS, ...p };
+    const merged = { ...DEFAULT_PREFS, ...p };
+    // If everything is empty (e.g. user accidentally cleared all), restore defaults
+    if (!merged.commodities.length && !merged.fx.length && !(merged.custom || []).length) {
+      return DEFAULT_PREFS;
+    }
+    return merged;
   } catch {
     return DEFAULT_PREFS;
   }
