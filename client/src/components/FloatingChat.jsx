@@ -55,6 +55,7 @@ function ChatWindow({ onClose, sessionId }) {
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState('');
+  const [summaryGenerated, setSummaryGenerated] = useState(false);
 
   // Drag state
   const [pos, setPos] = useState({ x: 0, y: 0 });
@@ -151,7 +152,7 @@ function ChatWindow({ onClose, sessionId }) {
         </div>
         {messages.length > 0 && !streaming && (
           <button
-            onClick={() => { setMessages([]); setStreamingText(''); }}
+            onClick={() => { setMessages([]); setStreamingText(''); setSummaryGenerated(false); }}
             onPointerDown={e => e.stopPropagation()}
             className="text-[10px] text-blue-400 hover:text-blue-200 transition-colors px-1"
           >
@@ -193,14 +194,37 @@ function ChatWindow({ onClose, sessionId }) {
       </div>
 
       {/* Quick action */}
-      {exchangeCount >= 2 && !streaming && (
+      {exchangeCount >= 2 && !streaming && !summaryGenerated && (
         <div className="px-3 pb-2 shrink-0">
           <button
-            onClick={() => send('Please give me the full intelligence summary with three scenarios.')}
+            onClick={() => {
+              setSummaryGenerated(true);
+              send('Please give me the full intelligence summary with three scenarios.');
+            }}
             className="w-full py-1.5 text-xs font-medium bg-amber-950 border border-amber-700 text-amber-300 rounded-lg hover:bg-amber-900 transition-colors"
           >
             Generate 3-Scenario Summary →
           </button>
+        </div>
+      )}
+
+      {/* Post-summary prompt */}
+      {summaryGenerated && !streaming && (
+        <div className="px-3 pb-2 shrink-0">
+          <div className="flex gap-2">
+            <button
+              onClick={() => send('I have a follow-up question about this.')}
+              className="flex-1 py-1.5 text-xs font-medium bg-surface border border-border text-gray-400 rounded-lg hover:border-blue-600 hover:text-blue-300 transition-colors"
+            >
+              💬 Continue discussion
+            </button>
+            <button
+              onClick={() => send('What else should I know about this situation?')}
+              className="flex-1 py-1.5 text-xs font-medium bg-surface border border-border text-gray-400 rounded-lg hover:border-blue-600 hover:text-blue-300 transition-colors"
+            >
+              🔍 Ask something else
+            </button>
+          </div>
         </div>
       )}
 
