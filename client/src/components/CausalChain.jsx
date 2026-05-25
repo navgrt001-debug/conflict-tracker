@@ -160,14 +160,37 @@ export default function CausalChain({ event }) {
         {/* Historical analogues */}
         {chain.historical_analogues?.length > 0 && (
           <div>
-            <div className="text-[10px] text-gray-600 uppercase tracking-wider mb-1.5">Historical Analogues</div>
-            <div className="space-y-1">
-              {chain.historical_analogues.map((a, i) => (
-                <div key={i} className="flex items-start gap-1.5 text-xs text-gray-400">
-                  <span className="text-gray-600 shrink-0">▸</span>
-                  <span>{a}</span>
-                </div>
-              ))}
+            <div className="text-[10px] text-gray-600 uppercase tracking-wider mb-2">Historical Analogues</div>
+            <div className="space-y-2">
+              {chain.historical_analogues.map((a, i) => {
+                // Support both old string format and new object format
+                if (typeof a === 'string') {
+                  return (
+                    <div key={i} className="flex items-start gap-1.5 text-xs text-gray-400 bg-surface border border-border rounded-lg px-2.5 py-2">
+                      <span className="text-blue-500 shrink-0 mt-0.5">▸</span>
+                      <span>{a}</span>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={i} className="bg-surface border border-border rounded-lg px-3 py-2.5 space-y-1.5">
+                    <div className="flex items-start gap-1.5">
+                      <span className="text-blue-500 shrink-0 mt-0.5 text-xs">▸</span>
+                      <span className="text-xs font-semibold text-blue-300">{a.event}</span>
+                    </div>
+                    {a.similarity && (
+                      <p className="text-[11px] text-gray-400 leading-relaxed pl-3.5">
+                        <span className="text-gray-600 font-medium">Why similar: </span>{a.similarity}
+                      </p>
+                    )}
+                    {a.outcome && (
+                      <p className="text-[11px] text-amber-400/80 leading-relaxed pl-3.5">
+                        <span className="text-gray-600 font-medium">Outcome: </span>{a.outcome}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
