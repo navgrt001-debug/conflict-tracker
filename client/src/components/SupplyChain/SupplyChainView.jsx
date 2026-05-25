@@ -49,7 +49,7 @@ export default function SupplyChainView() {
   // No company configured
   if (!companyId || (!company && !isLoading)) {
     return (
-      <div className="flex flex-col h-full items-center justify-center p-8">
+      <div className="flex flex-col h-full w-full items-center justify-center p-8">
         {setupOpen && (
           <CompanySetup onCreated={handleCreated} onClose={() => setSetupOpen(false)} />
         )}
