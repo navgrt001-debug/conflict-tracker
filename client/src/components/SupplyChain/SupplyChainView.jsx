@@ -57,13 +57,16 @@ export default function SupplyChainView() {
           <div className="text-5xl mb-4">🏭</div>
           <h2 className="text-white font-bold text-xl mb-2">Supply Chain Intelligence</h2>
           <p className="text-gray-400 text-sm mb-6 leading-relaxed">
-            Track how global conflicts, commodity price changes, and supply disruptions affect your raw material costs — in real time.
+            Model how global conflicts, commodity disruptions and inflation affect your P&L — with AI-driven quarterly forecasts and CFO-ready sensitivity analysis.
           </p>
-          <div className="grid grid-cols-3 gap-3 mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-8">
             {[
-              { icon: '📊', title: 'Cost Impact', desc: 'Monthly & annual exposure per material' },
-              { icon: '⚠️', title: 'Risk Scoring', desc: 'Country-level conflict risk from live news' },
-              { icon: '🤖', title: 'AI Narratives', desc: 'CFO-ready executive summaries' },
+              { icon: '📈', title: 'P&L Forecast', desc: '4-quarter AI impact modelling on your financials' },
+              { icon: '🎯', title: 'Sensitivity Grid', desc: 'CFO-ready scenario table across cost changes' },
+              { icon: '🌍', title: 'Buyer Impact', desc: 'Purchasing power & inflation in your markets' },
+              { icon: '⇄',  title: 'Alternative Sources', desc: 'Ranked safer suppliers with AI reasoning' },
+              { icon: '📊', title: 'Cost Impact', desc: 'Per-material conflict exposure & risk scoring' },
+              { icon: '⚠️', title: 'Risk Scoring', desc: 'Country-level geopolitical risk from live data' },
             ].map(f => (
               <div key={f.title} className="bg-surface border border-border rounded-xl p-3 text-center">
                 <div className="text-xl mb-1">{f.icon}</div>

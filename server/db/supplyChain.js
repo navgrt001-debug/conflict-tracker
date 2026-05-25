@@ -11,13 +11,33 @@ const adapter = new FileSync(path.join(dataDir, 'supplyChain.json'));
 const db = low(adapter);
 db.defaults({ companies: [] }).write();
 
-function createCompany({ name, industry, base_currency = 'USD', materials = [] }) {
+function createCompany({
+  name, industry, base_currency = 'USD', materials = [],
+  final_product, manufacturing_country, manufacturing_country_name,
+  buyer_markets = [], pnl = {}, risk_tolerance = {},
+}) {
   if (!name) throw new Error('name is required');
   const company = {
     id: uuid(),
     name,
     industry: industry || '',
     base_currency,
+    final_product: final_product || '',
+    manufacturing_country: manufacturing_country || '',
+    manufacturing_country_name: manufacturing_country_name || '',
+    buyer_markets: (buyer_markets || []).map(b => ({
+      iso3: b.iso3 || '',
+      country_name: b.country_name || '',
+      percentage: Number(b.percentage) || 0,
+    })),
+    pnl: {
+      annual_revenue: Number(pnl.annual_revenue) || 0,
+      cogs_pct: Number(pnl.cogs_pct) || 0,
+      opex_pct: Number(pnl.opex_pct) || 0,
+    },
+    risk_tolerance: {
+      max_profit_drop_pct: Number(risk_tolerance.max_profit_drop_pct) || 15,
+    },
     created_at: new Date().toISOString(),
     materials: materials.map(m => normalizeMaterial(m)),
   };
@@ -60,9 +80,14 @@ function updateCompany(id, updates) {
   const company = getCompany(id);
   if (!company) return null;
   const allowed = {};
-  if (updates.name !== undefined) allowed.name = updates.name;
-  if (updates.industry !== undefined) allowed.industry = updates.industry;
-  if (updates.base_currency !== undefined) allowed.base_currency = updates.base_currency;
+  const fields = [
+    'name','industry','base_currency','final_product',
+    'manufacturing_country','manufacturing_country_name',
+    'buyer_markets','pnl','risk_tolerance',
+  ];
+  for (const f of fields) {
+    if (updates[f] !== undefined) allowed[f] = updates[f];
+  }
   db.get('companies').find({ id }).assign(allowed).write();
   return getCompany(id);
 }

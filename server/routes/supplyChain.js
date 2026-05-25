@@ -7,6 +7,8 @@ const { scoreCountryRisk } = require('../services/conflictRiskScorer');
 const { getEvents } = require('../services/dataFeed');
 const commoditySymbols = require('../data/commoditySymbols.json');
 const { rankAlternativeSuppliers, generateSwitchingPlan, compareSuppliers } = require('../services/supplierRanker');
+const { generatePLAnalysis, invalidateCache: invalidatePLCache } = require('../services/plAnalyzer');
+const conflicts = require('../data/conflicts');
 
 const impactCache = new NodeCache({ stdTTL: 300 });
 
@@ -27,13 +29,6 @@ router.get('/companies', (req, res) => {
 router.get('/companies/:id', (req, res) => {
   const company = supplyChainDb.getCompany(req.params.id);
   if (!company) return res.status(404).json({ error: 'Company not found' });
-  res.json(company);
-});
-
-router.put('/companies/:id', (req, res) => {
-  const company = supplyChainDb.updateCompany(req.params.id, req.body);
-  if (!company) return res.status(404).json({ error: 'Company not found' });
-  impactCache.del(`impact_${req.params.id}`);
   res.json(company);
 });
 
@@ -173,6 +168,30 @@ router.get('/compare', (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// --- P&L Analysis (AI-powered quarterly forecast + sensitivity grid) ---
+router.get('/companies/:id/pl-analysis', async (req, res) => {
+  const { id } = req.params;
+  const forceRefresh = req.query.refresh === 'true';
+
+  if (forceRefresh) invalidatePLCache(id);
+
+  try {
+    const result = await generatePLAnalysis(id, conflicts);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Invalidate PL cache when company is updated
+router.put('/companies/:id', (req, res) => {
+  const company = supplyChainDb.updateCompany(req.params.id, req.body);
+  if (!company) return res.status(404).json({ error: 'Company not found' });
+  impactCache.del(`impact_${req.params.id}`);
+  invalidatePLCache(req.params.id);
+  res.json(company);
 });
 
 module.exports = router;

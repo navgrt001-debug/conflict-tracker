@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import MaterialImpactCard from './MaterialImpactCard';
-import AlternativeSuppliers from './AlternativeSuppliers';
-import PricingDashboard from './PricingDashboard';
+import PLForecastPanel from './PLForecastPanel';
+import SensitivityGrid from './SensitivityGrid';
 
 const API = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api';
 
@@ -70,8 +70,7 @@ async function fetchNarrative(companyId) {
 }
 
 export default function CostImpactDashboard({ companyId, company, onEdit }) {
-  const [mainTab, setMainTab] = useState('impact'); // 'impact' | 'alternatives'
-  const [altMaterial, setAltMaterial] = useState(null);
+  const [mainTab, setMainTab] = useState('forecast');
   const [sortBy, setSortBy] = useState('annual_cost_increase');
   const [sortDir, setSortDir] = useState('desc');
   const [filterRisk, setFilterRisk] = useState('ALL');
@@ -150,21 +149,21 @@ export default function CostImpactDashboard({ companyId, company, onEdit }) {
         <div className="flex items-start justify-between">
           <div>
             <h2 className="text-white font-bold text-lg">{company?.name || impact.company_name}</h2>
-            <p className="text-xs text-gray-500">{company?.industry} · Supply Chain Risk Analysis</p>
+            <p className="text-xs text-gray-500">
+              {company?.industry}
+              {company?.final_product && ` · ${company.final_product}`}
+              {company?.manufacturing_country_name && ` · Mfg: ${company.manufacturing_country_name}`}
+            </p>
           </div>
-          <div className="flex gap-2">
-            {/* Main tab toggle */}
+          <div className="flex gap-2 flex-wrap">
             <div className="flex bg-surface border border-border rounded-lg overflow-hidden text-xs font-medium">
               {[
+                { id: 'forecast',     label: '📈 P&L Forecast' },
+                { id: 'sensitivity',  label: '🎯 Sensitivity Grid' },
                 { id: 'impact',       label: '📊 Cost Impact' },
-                { id: 'alternatives', label: '⇄ Alternatives' },
-                { id: 'pricing',      label: '💰 Pricing' },
               ].map(t => (
-                <button
-                  key={t.id}
-                  onClick={() => setMainTab(t.id)}
-                  className={`px-3 py-1.5 transition-colors ${mainTab === t.id ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-300'}`}
-                >
+                <button key={t.id} onClick={() => setMainTab(t.id)}
+                  className={`px-3 py-1.5 transition-colors ${mainTab === t.id ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-300'}`}>
                   {t.label}
                 </button>
               ))}
@@ -172,61 +171,17 @@ export default function CostImpactDashboard({ companyId, company, onEdit }) {
             <button onClick={onEdit} className="text-xs px-3 py-1.5 border border-border text-gray-500 hover:text-gray-300 rounded-lg transition-colors">
               ✏ Edit
             </button>
-            <button
-              onClick={() => refetch()}
-              disabled={isFetching}
-              className="text-xs px-3 py-1.5 border border-border text-gray-500 hover:text-gray-300 rounded-lg transition-colors disabled:opacity-40"
-            >
-              {isFetching ? '⟳ Refreshing…' : '↻ Refresh'}
-            </button>
           </div>
         </div>
 
-        {/* Pricing tab content */}
-        {mainTab === 'pricing' && (
-          <PricingDashboard companyId={companyId} company={company} />
+        {/* P&L Forecast tab */}
+        {mainTab === 'forecast' && (
+          <PLForecastPanel companyId={companyId} company={company} />
         )}
 
-        {/* Alternatives tab content */}
-        {mainTab === 'alternatives' && (
-          <div className="space-y-4">
-            {/* Material selector */}
-            <div className="bg-surface border border-border rounded-xl p-4">
-              <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Select Material</div>
-              <div className="flex flex-wrap gap-2">
-                {(impact.materials || []).map(m => (
-                  <button
-                    key={m.material_id || m.material_name}
-                    onClick={() => setAltMaterial(m)}
-                    className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
-                      altMaterial?.material_name === m.material_name
-                        ? 'bg-blue-700 border-blue-500 text-white'
-                        : 'border-border text-gray-400 hover:text-gray-200 hover:border-gray-500'
-                    }`}
-                  >
-                    {m.material_name}
-                    <span className={`ml-1.5 text-[10px] ${
-                      m.risk_level === 'CRITICAL' ? 'text-red-400' :
-                      m.risk_level === 'HIGH' ? 'text-orange-400' :
-                      m.risk_level === 'MEDIUM' ? 'text-amber-400' : 'text-green-400'
-                    }`}>● {m.risk_level}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Alternatives for selected material */}
-            {altMaterial ? (
-              <AlternativeSuppliers
-                materialName={altMaterial.material_name}
-                currentSources={(altMaterial.source_risks || []).map(s => ({ country_iso3: s.iso3 }))}
-              />
-            ) : (
-              <div className="text-center py-12 text-gray-600 text-sm">
-                Select a material above to see ranked alternative suppliers
-              </div>
-            )}
-          </div>
+        {/* Sensitivity grid + alternatives tab */}
+        {mainTab === 'sensitivity' && (
+          <SensitivityGrid companyId={companyId} company={company} />
         )}
 
         {/* Cost Impact tab content */}
